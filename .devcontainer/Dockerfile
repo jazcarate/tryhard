@@ -1,7 +1,5 @@
-FROM haskell:8.10
+FROM haskell:8.8.4
 
 WORKDIR /opt/app
 
-RUN stack setup
-
-RUN stack install brittany ghcide
+# RUN stack install --system-ghc brittany ghcide

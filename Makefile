@@ -14,6 +14,6 @@ repl: ## Repl
 	stack ghci
 
 run: ## Run de program in dev mode. Pass arguments in ARGS
-	stack exec tryhard -- $$ARGS
+	stack run -- $$ARGS
 
 .PHONY: serve build test update-deps repl run

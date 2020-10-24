@@ -2,8 +2,8 @@ name:                tryhard
 version:             0.1.0.0
 github:              "jazcarate/tryhard"
 license:             MIT
-author:              "Joaquin Azcarate"
-maintainer:          "j@florius.com.ar"
+author:              "Joaquin Azcarate <j@florius.com.ar>"
+maintainer:          "Joaquin Azcarate <j@florius.com.ar>"
 copyright:           "2020 Joaquin Azcarate"
 
 extra-source-files:
@@ -17,9 +17,25 @@ description:         Please see the README on GitHub at <https://github.com/jazc
 
 dependencies:
 - base >= 4.7 && < 5
+- req
+- aeson
+- conferer
+- text
+- directory
+- filepath
+- bytestring
+- exceptions
+- http-types
+- http-client
+- modern-uri
+
+default-extensions:
+- OverloadedStrings
 
 library:
   source-dirs: src
+  ghc-options:
+  - -Wall
 
 executables:
   tryhard-exe:
