@@ -21,7 +21,7 @@ jobs:
       uses: actions/cache@v1
       with:
         path: ~/.stack
-        key: ${{ runner.os }}-${{ matrix.ghc }}-stack
+        key: ${{ runner.os }}-${{ hashFiles('**/package.yaml') }}-stack
     - name: Build
       run: stack build --system-ghc --test --bench --no-run-tests --no-run-benchmarks
     - name: Run tests
