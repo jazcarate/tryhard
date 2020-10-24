@@ -1,0 +1,12 @@
+{
+    "name": "tryhard",
+    "dockerFile": "Dockerfile",
+    "runArgs": [],
+
+    "extensions": [
+		"justusadam.language-haskell",
+		"digitalassetholdingsllc.ghcide",
+		"maxgabriel.brittany",
+		"streetsidesoftware.code-spell-checker"
+	]
+}

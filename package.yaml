@@ -1,0 +1,46 @@
+name:                tryhard
+version:             0.1.0.0
+github:              "jazcarate/tryhard"
+license:             MIT
+author:              "Joaquin Azcarate"
+maintainer:          "j@florius.com.ar"
+copyright:           "2020 Joaquin Azcarate"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+synopsis:            Quick and easy tool to get and aggregate DotA 2 hero stats and matchups 
+category:            CLI
+
+description:         Please see the README on GitHub at <https://github.com/jazcarate/tryhard#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+
+executables:
+  tryhard-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tryhard
+
+tests:
+  tryhard-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tryhard
+    - hspec
+    - QuickCheck
