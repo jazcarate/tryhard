@@ -28,6 +28,11 @@ dependencies:
 - http-types
 - http-client
 - modern-uri
+- fuzzy
+- brick
+- microlens
+- microlens-th
+- vty
 
 default-extensions:
 - OverloadedStrings

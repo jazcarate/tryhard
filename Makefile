@@ -5,7 +5,7 @@ build: ## Build the app
 	stack build
 
 test: ## Test the app
-	stack test
+	stack test --file-watch
 
 update-deps: ## Update the deps from the package.yaml file
 	stack build
@@ -13,7 +13,10 @@ update-deps: ## Update the deps from the package.yaml file
 repl: ## Repl
 	stack ghci
 
+dev: ## Launch the TUI in development mode and watch for file changes
+	ghcid --poll --test=:main
+
 run: ## Run de program in dev mode. Pass arguments in ARGS
 	stack run -- $$ARGS
 
-.PHONY: serve build test update-deps repl run
+.PHONY: serve build test update-deps repl run watch

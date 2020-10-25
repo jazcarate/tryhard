@@ -1,7 +1,7 @@
 {
     "name": "tryhard",
-    "dockerFile": "Dockerfile",
-    "runArgs": [],
+    "dockerFile": "../Dockerfile",
+    "runArgs": [ "--tty", "--attach" ],
 
     "extensions": [
 		"justusadam.language-haskell",

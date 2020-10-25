@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import qualified Tryhard.Lib                   as Lib
 
 main :: IO ()
-main = someFunc
+main = Lib.main
