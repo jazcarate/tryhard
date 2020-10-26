@@ -15,6 +15,9 @@ import           Tryhard.Types
 import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity )
+import           Data.Ratio                     ( Ratio
+                                                , (%)
+                                                )
 
 
 heroesETagFile :: FilePath -> FilePath
@@ -40,10 +43,15 @@ data MatchupMatrix = MatchupMatrix {
   matchupMatrixUrl :: URL
 }
 
-class (Monad m) => MatchupMap a m where
-  for :: a -> HeroID -> m [Matchup]
+type Result a = (HeroID, a)
 
-instance MatchupMap MatchupMatrix IO where
+class (Monad m) => MatchupMap container m res where
+  for :: container -> HeroID -> m [res]
+
+result :: Matchup -> Result (Ratio Int)
+result m = (matchupHeroId m, (matchupWins m) % (matchupGamesPlayed m))
+
+instance MatchupMap MatchupMatrix IO Matchup where
   for matrix heroId = do
     cache <- readTVarIO $ container
     let val = HM.lookup heroId cache
@@ -59,7 +67,7 @@ instance MatchupMap MatchupMatrix IO where
 type UnderlyingMatchupMatrix = HM.HashMap HeroID [Matchup]
 newtype ConstMathcupMap = ConstMathcupMap UnderlyingMatchupMatrix
 
-instance MatchupMap ConstMathcupMap Identity where
+instance MatchupMap  ConstMathcupMap Identity Matchup where
   for (ConstMathcupMap map') heroId = maybe mempty pure $ HM.lookup heroId map'
 
 newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap

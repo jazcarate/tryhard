@@ -25,6 +25,7 @@ matchup hero' played wins = Matchup { matchupHeroId      = heroID hero'
                                     , matchupGamesPlayed = played
                                     , matchupWins        = wins
                                     }
+
 matchups :: ConstMathcupMap
 matchups = newConstMatchupMatrix
   $ HM.fromList [(heroID antiMage, [matchup axe 10 5, matchup bane 100 0])]

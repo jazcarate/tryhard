@@ -5,7 +5,7 @@ build: ## Build the app
 	stack build
 
 test: ## Test the app
-	ghcid --poll --command "stack ghci tryhard:test:tryhard-test" --test ":main"
+	ghcid --poll --command "stack ghci tryhard:lib tryhard:test:tryhard-test --ghci-options=-fobject-code" --test ":main"
 
 update-deps: ## Update the deps from the package.yaml file
 	stack build

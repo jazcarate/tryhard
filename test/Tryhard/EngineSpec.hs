@@ -4,8 +4,7 @@ module Tryhard.EngineSpec
 where
 
 import           Test.Hspec
-import           Test.QuickCheck
-import           Data.Char
+import           Data.Maybe                     ( catMaybes )
 
 import           Tryhard.Engine
 import           Tryhard.Types
@@ -14,16 +13,12 @@ import           Tryhard.OpenDota
 
 import           Data.Functor.Identity          ( Identity(runIdentity) )
 
-yourTeam :: [Hero]
-yourTeam = [antiMage]
-
 spec :: Spec
 spec = do
   describe "#recomend" $ do
     it "antimage is good agains axe and bane" $ do
       recomend' db matchups antiMage `shouldBe` [axe, bane]
 
-
-
 recomend' :: [Hero] -> ConstMathcupMap -> Hero -> [Hero]
-recomend' hs m h = runIdentity $ recomend hs m h
+recomend' heroes m h =
+  catMaybes $ bindHeros heroes <$> (runIdentity $ recomend m h)

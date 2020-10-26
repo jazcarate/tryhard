@@ -10,35 +10,23 @@ import           Tryhard.OpenDota               ( getHeroes
                                                 )
 import           Tryhard.TUI                    ( start )
 import           Tryhard.Engine
-
+import           Data.List                      ( sort )
 import           Tryhard.Types
 
-main :: IO ()
-main = do
+run :: IO ()
+run = do
   config                 <- defaultConfig "tryhard"
   appConfig :: AppConfig <- getFromRootConfig config
 
   heroes                 <- getHeroes appConfig
   let hero = heroes !! 4
 
-  m    <- newMatchupMatrix appConfig
-  resp <- m `for` (heroID hero)
+  m                 <- newMatchupMatrix appConfig
+  resp :: [Matchup] <- m `for` (heroID hero)
+
+  let wp = take 4 $ reverse $ sort $ NumberOfMatches <$> resp
 
   -- _ <- start heroes
-  putStrLn $ show $ length resp
-
-{-
-someFunc ::  Text -> IO ()
-someFunc q = do
-  config    <- defaultConfig "tryhard"
-  appConfig <- getFromRootConfig config
-  heroesUrl <- prepareUrl $ unHeroJsonUrl $ appConfigHeroJsonURL $ appConfig
-  home      <- transformPath $ appConfigHome appConfig
-  heros     <- getHerosWithCache home heroesUrl
-  let f = Fuzzy.filter q (unList heros) "<" ">" heroName False
-  let x = heroID $ Fuzzy.original $ head f
-  openApiUrl <- prepareUrl $ unOpenDotaApiUrl $ appConfigOpenDotaApi $ appConfig
-  matchupsRaw <- getHeroMatchup x openApiUrl
-  let matchups = bindHeros matchupsRaw (unList heros)
-  putStrLn $ show matchups
--}
+  putStrLn $ "Best matchups for " <> show hero
+  putStrLn $ "By NumberOfMatches"
+  putStrLn $ show $ (\x -> (bindHeros heroes $ getHero x, x)) <$> wp
