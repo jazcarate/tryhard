@@ -20,7 +20,7 @@ import           System.Directory
 import           Data.List                      ( find )
 import           Network.HTTP.Types.Header
 
-newtype HeroIDResponse = HeroIDResponse { unHeroID :: Int } deriving (Eq)
+newtype HeroIDResponse = HeroIDResponse { unHeroID :: Int } deriving (Eq, Show)
 
 data HeroResponse = HeroResponse {
   heroResponseName :: Text,
@@ -31,7 +31,7 @@ data HeroMatchupResponse = HeroMatchupResponse {
   heroMatchupResponseHeroID :: HeroIDResponse,
   heroMatchupGamesResponsePlayed :: Int,
   heroMatchupResponseWins :: Int
-}
+} deriving (Show)
 
 newtype ETag = ETag { unETag :: BS.ByteString}
 
@@ -107,11 +107,8 @@ getHerosWithCache etagFilePath heroesFilePath (url, option) = do
   cacheHit _ = Nothing
 
 
-getHeroMatchupInt
-  :: Int
-  -> (Url 'Https, Option 'Https)
-  -> IO ([HeroMatchupResponse])
-getHeroMatchupInt heroId (baseUrl, option) =
+getHeroMatchup
+  :: Int -> (Url 'Https, Option 'Https) -> IO ([HeroMatchupResponse])
+getHeroMatchup heroId (baseUrl, option) =
   runReq defaultHttpConfig $ getHeroMatchupRaw url option
- where
-  url = baseUrl /: "heroes" /: (pack $ show heroId) /: "matchups"
+  where url = baseUrl /: "heroes" /: (pack $ show heroId) /: "matchups"

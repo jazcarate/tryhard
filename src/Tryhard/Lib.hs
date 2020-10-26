@@ -4,8 +4,14 @@ module Tryhard.Lib where
 
 import           Conferer
 import           Tryhard.Config                 ( AppConfig )
-import           Tryhard.OpenDota               ( getHeroes )
+import           Tryhard.OpenDota               ( getHeroes
+                                                , newMatchupMatrix
+                                                , for
+                                                )
 import           Tryhard.TUI                    ( start )
+import           Tryhard.Engine
+
+import           Tryhard.Types
 
 main :: IO ()
 main = do
@@ -13,8 +19,13 @@ main = do
   appConfig :: AppConfig <- getFromRootConfig config
 
   heroes                 <- getHeroes appConfig
-  _ <- start heroes
-  putStrLn "Bye!"
+  let hero = heroes !! 4
+
+  m    <- newMatchupMatrix appConfig
+  resp <- m `for` (heroID hero)
+
+  -- _ <- start heroes
+  putStrLn $ show $ length resp
 
 {-
 someFunc ::  Text -> IO ()
@@ -30,12 +41,4 @@ someFunc q = do
   matchupsRaw <- getHeroMatchup x openApiUrl
   let matchups = bindHeros matchupsRaw (unList heros)
   putStrLn $ show matchups
-
-bindHeros :: [HeroMatchupResponse] -> [HeroResponse] -> [Text]
-bindHeros matchups heroes = withName <$> matchups
- where
-  withName :: HeroMatchupResponse -> Text
-  withName m =
-    maybe "-" heroName $ find (\hs -> heroID hs == heroMatchupHeroID m) heroes
-
 -}

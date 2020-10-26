@@ -33,6 +33,9 @@ dependencies:
 - microlens
 - microlens-th
 - vty
+- unordered-containers
+- stm
+- hashable
 
 default-extensions:
 - OverloadedStrings

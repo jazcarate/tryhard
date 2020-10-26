@@ -5,7 +5,7 @@ build: ## Build the app
 	stack build
 
 test: ## Test the app
-	stack test --file-watch
+	ghcid --poll --command "stack ghci tryhard:test:tryhard-test" --test ":main"
 
 update-deps: ## Update the deps from the package.yaml file
 	stack build
