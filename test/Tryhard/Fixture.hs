@@ -17,15 +17,12 @@ axe = hero "Axe" 2
 bane :: Hero
 bane = hero "Bane" 3
 
-db :: [Hero]
-db = [antiMage, axe, bane]
-
 matchup :: Hero -> Int -> Int -> Matchup
-matchup hero' played wins = Matchup { matchupHeroId      = heroID hero'
+matchup hero' played wins = Matchup { matchupHero        = hero'
                                     , matchupGamesPlayed = played
                                     , matchupWins        = wins
                                     }
 
 matchups :: ConstMathcupMap
 matchups = newConstMatchupMatrix
-  $ HM.fromList [(heroID antiMage, [matchup axe 10 5, matchup bane 100 0])]
+  $ HM.fromList [(antiMage, [matchup axe 10 5, matchup bane 100 0])]

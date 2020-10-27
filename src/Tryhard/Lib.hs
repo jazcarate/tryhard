@@ -4,14 +4,10 @@ module Tryhard.Lib where
 
 import           Conferer
 import           Tryhard.Config                 ( AppConfig )
-import           Tryhard.OpenDota               ( getHeroes
-                                                , newMatchupMatrix
-                                                , for
-                                                )
-import           Tryhard.TUI                    ( start )
-import           Tryhard.Engine
+import           Tryhard.OpenDota
 import           Data.List                      ( sort )
 import           Tryhard.Types
+import           Tryhard.OpenDota.Internal      ( byNameLike )
 
 run :: IO ()
 run = do
@@ -19,14 +15,23 @@ run = do
   appConfig :: AppConfig <- getFromRootConfig config
 
   heroes                 <- getHeroes appConfig
-  let hero = heroes !! 4
+  hero                   <-
+    maybe (fail "The hero was not found") pure $ heroes `byNameLike` "Razor"
 
-  m                 <- newMatchupMatrix appConfig
-  resp :: [Matchup] <- m `for` (heroID hero)
+  m    <- newMatchupMatrix appConfig heroes
+  resp <- m `for` hero
 
-  let wp = take 4 $ reverse $ sort $ NumberOfMatches <$> resp
+  let wp = take 4 $ reverse $ sort $ WinPercentage <$> resp
 
   -- _ <- start heroes
   putStrLn $ "Best matchups for " <> show hero
-  putStrLn $ "By NumberOfMatches"
-  putStrLn $ show $ (\x -> (bindHeros heroes $ getHero x, x)) <$> wp
+  putStrLn $ "By WinPercentage"
+  putStrLn $ show $ (\x -> (getHero x, x)) <$> wp
+
+recomend
+  :: (Stats container m result)
+  => container
+  -> [Hero]
+  -> [Hero]
+  -> m [(Hero, result)]
+recomend = undefined

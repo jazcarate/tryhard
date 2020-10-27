@@ -4,7 +4,6 @@ module Tryhard.EngineSpec
 where
 
 import           Test.Hspec
-import           Data.Maybe                     ( catMaybes )
 
 import           Tryhard.Engine
 import           Tryhard.Types
@@ -17,8 +16,7 @@ spec :: Spec
 spec = do
   describe "#recomend" $ do
     it "antimage is good agains axe and bane" $ do
-      recomend' db matchups antiMage `shouldBe` [axe, bane]
+      matchupHero <$> recomend' matchups antiMage `shouldBe` [axe, bane]
 
-recomend' :: [Hero] -> ConstMathcupMap -> Hero -> [Hero]
-recomend' heroes m h =
-  catMaybes $ bindHeros heroes <$> (runIdentity $ recomend m h)
+recomend' :: ConstMathcupMap -> Hero -> [Matchup]
+recomend' m h = runIdentity $ recomend m h

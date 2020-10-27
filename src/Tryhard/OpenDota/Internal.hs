@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
 
@@ -19,6 +20,10 @@ import           System.FilePath
 import           System.Directory
 import           Data.List                      ( find )
 import           Network.HTTP.Types.Header
+import qualified Data.HashMap.Strict           as HM
+import           Tryhard.Types
+import qualified Text.Fuzzy                    as Fuzzy
+import           Data.Maybe                     ( listToMaybe )
 
 newtype HeroIDResponse = HeroIDResponse { unHeroID :: Int } deriving (Eq, Show)
 
@@ -26,6 +31,7 @@ data HeroResponse = HeroResponse {
   heroResponseName :: Text,
   heroResponseID :: HeroIDResponse
 }
+
 
 data HeroMatchupResponse = HeroMatchupResponse {
   heroMatchupResponseHeroID :: HeroIDResponse,
@@ -52,7 +58,6 @@ instance FromJSON a => FromJSON (JSONMapList a) where
   parseJSON = withObject "hash map"
     $ \obj -> JSONMapList <$> (mapM parseJSON $ toList obj)
 
-
 getHeroMatchupRaw :: Url 'Https -> Option 'Https -> Req [HeroMatchupResponse]
 getHeroMatchupRaw heroMatchupUrl option =
   responseBody <$> req GET heroMatchupUrl NoReqBody jsonResponse option
@@ -76,18 +81,38 @@ getHerosRaw etag heroJsonUrl option = reqBr
     let body = BS.concat body'
     pure (ETag <$> etagMb, body)
 
--- TODO: Win `req` 3.7, Req is instance of MonadThrow, that can easily `catchIf` without going though IO.
--- Whenever LTS is up to date with 3.7 and GHCIDE works with it, update
+
+newtype HeroDB = HeroDB { unHeroDB :: HM.HashMap HeroID Hero }
+
+toDB :: [HeroResponse] -> HeroDB
+toDB responses = HeroDB $ HM.fromList $ entry <$> responses
+ where
+  entry resposne =
+    (heroId, Hero { heroID = heroId, heroName = heroResponseName resposne })
+    where heroId = toheroID $ heroResponseID resposne
+
+
+toheroID :: HeroIDResponse -> HeroID
+toheroID = HeroID . unHeroID
+
+byNameLike :: HeroDB -> Text -> Maybe Hero
+byNameLike HeroDB { unHeroDB = haystack } needle = do
+  let entries = HM.elems haystack
+  let matches = Fuzzy.filter needle entries mempty mempty heroName True
+  Fuzzy.original <$> listToMaybe matches
+
+byHeroId :: HeroDB -> HeroID -> Maybe Hero
+byHeroId HeroDB { unHeroDB = haystack } needle = do
+  HM.lookup needle haystack
+
 getHerosWithCache
-  :: FilePath -> FilePath -> (Url 'Https, Option 'Https) -> IO [HeroResponse]
+  :: FilePath -> FilePath -> (Url 'Https, Option 'Https) -> IO HeroDB
 getHerosWithCache etagFilePath heroesFilePath (url, option) = do
   etag <- ETag <$> BS.readFile etagFilePath `catch` \(_ :: IOError) ->
     pure mempty
   heroesJson <- catchJust cacheHit (get etag) (readCache)
-  heroes :: (JSONMapList HeroResponse) <-
-    maybe (fail "cant decode heroes json") pure $ decode $ BSL.fromStrict
-      heroesJson
-  pure $ unList heroes
+  responses  <- either fail pure $ eitherDecode $ BSL.fromStrict heroesJson
+  pure $ toDB $ unList $ responses
  where
   readCache :: a -> IO BS.ByteString
   readCache _ = BS.readFile heroesFilePath

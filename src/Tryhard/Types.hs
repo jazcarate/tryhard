@@ -1,3 +1,8 @@
+-- TODO: Format this file!!
+
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Tryhard.Types where
 
 import           Data.Text                      ( Text
@@ -7,38 +12,40 @@ import           Data.Hashable
 import           Data.Ratio
 import           Data.Function                  ( on )
 import           Numeric                        ( showGFloat )
+import           Data.Aeson
 
-newtype HeroID = HeroID { unHero :: Int } deriving (Eq)
-
-instance Hashable HeroID where
-  hashWithSalt salt = hashWithSalt salt . unHero
+newtype HeroID = HeroID { unHero :: Int } deriving (Eq, Ord, Hashable, FromJSONKey)
 
 data Hero = Hero
-  { heroName :: Text
-  , heroID   :: HeroID
+  { heroID   :: HeroID
+  , heroName :: Text
   } deriving (Eq)
+
+
+instance Hashable Hero where
+  hashWithSalt salt = hashWithSalt salt . heroID
 
 instance Show Hero where
   show = unpack . heroName
 
 
 data Matchup = Matchup
-  { matchupHeroId      :: HeroID
+  { matchupHero      :: Hero
   , matchupGamesPlayed :: Int
   , matchupWins        :: Int
   }
 
 
 instance Eq Matchup where
-  (==) = (==) `on` matchupHeroId
+  (==) = (==) `on` matchupHero
 
 class WithHero a where
-  getHero :: a -> HeroID
+  getHero :: a -> Hero
 
 newtype WinPercentage = WinPercentage { unWinPercentageMatchup :: Matchup }
 
 instance WithHero WinPercentage where
-  getHero = matchupHeroId . unWinPercentageMatchup
+  getHero = matchupHero . unWinPercentageMatchup
 
 instance Eq WinPercentage where
   (==) = (==) `on` unWinPercentageMatchup
@@ -61,9 +68,6 @@ showRatio r = showGFloat (Just 2) val ""
 
 newtype NumberOfMatches = NumberOfMatches { unNumberOfMatchesMatchup :: Matchup }
 
-instance WithHero NumberOfMatches where
-  getHero = matchupHeroId . unNumberOfMatchesMatchup
-
 instance Eq NumberOfMatches where
   (==) = (==) `on` (matchupGamesPlayed . unNumberOfMatchesMatchup)
 
@@ -72,3 +76,9 @@ instance Ord NumberOfMatches where
 
 instance Show NumberOfMatches where
   show = (show . matchupGamesPlayed . unNumberOfMatchesMatchup)
+
+instance WithHero NumberOfMatches where
+  getHero = matchupHero . unNumberOfMatchesMatchup
+
+class (Monad m) => Stats container m res where
+  for :: container -> Hero -> m [res]

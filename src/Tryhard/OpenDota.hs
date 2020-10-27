@@ -15,9 +15,7 @@ import           Tryhard.Types
 import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity )
-import           Data.Ratio                     ( Ratio
-                                                , (%)
-                                                )
+import           Data.Maybe                     ( catMaybes )
 
 
 heroesETagFile :: FilePath -> FilePath
@@ -27,74 +25,70 @@ heroesJSONFile :: FilePath -> FilePath
 heroesJSONFile home = home </> "heroes.json"
 
 
-getHeroes :: AppConfig -> IO ([Hero])
+getHeroes :: AppConfig -> IO HeroDB
 getHeroes appConfig = do
   url  <- prepareUrl (appConfigHeroJsonURL appConfig)
   home <- toPath $ appConfigHome appConfig
   let etagFilePath   = heroesETagFile home
   let heroesFilePath = heroesJSONFile home
-  response <- getHerosWithCache etagFilePath heroesFilePath url
-  pure $ toHero <$> response
+  getHerosWithCache etagFilePath heroesFilePath url
 
 type URL = (Url 'Https, Option 'Https)
 
 data MatchupMatrix = MatchupMatrix {
+  matchupMatrixHeroDB :: HeroDB,
   matchupMatrixContainer :: TVar UnderlyingMatchupMatrix,
   matchupMatrixUrl :: URL
 }
 
 type Result a = (HeroID, a)
 
-class (Monad m) => MatchupMap container m res where
-  for :: container -> HeroID -> m [res]
 
-result :: Matchup -> Result (Ratio Int)
-result m = (matchupHeroId m, (matchupWins m) % (matchupGamesPlayed m))
-
-instance MatchupMap MatchupMatrix IO Matchup where
-  for matrix heroId = do
+instance Stats MatchupMatrix IO Matchup where
+  for matrix hero' = do
     cache <- readTVarIO $ container
-    let val = HM.lookup heroId cache
+    let val = HM.lookup hero' cache
     case val of
       Just x  -> pure x
       Nothing -> do
-        resp' <- getHeroMatchup (unHero heroId) (matchupMatrixUrl matrix)
-        let resp = toMatchup <$> resp'
-        _ <- atomically $ modifyTVar container (HM.insert heroId resp)
-        pure resp
-    where container = matchupMatrixContainer matrix
+        rawResponse <- getHeroMatchup (unHero heroId) (matchupMatrixUrl matrix)
+        let response = catMaybes $ toMatchup <$> rawResponse -- Ignore matchups that we can't find hero for
+        _ <- atomically $ modifyTVar container (HM.insert hero' response)
+        pure response
+   where
+    container = matchupMatrixContainer matrix
+    heroId    = heroID hero'
+    toMatchup :: HeroMatchupResponse -> Maybe Matchup
+    toMatchup response = do
+      hero'' <-
+        (matchupMatrixHeroDB matrix)
+          `byHeroId` (toheroID $ heroMatchupResponseHeroID response)
+      pure $ Matchup
+        { matchupHero        = hero''
+        , matchupGamesPlayed = heroMatchupGamesResponsePlayed response
+        , matchupWins        = heroMatchupResponseWins response
+        }
 
-type UnderlyingMatchupMatrix = HM.HashMap HeroID [Matchup]
+
+type UnderlyingMatchupMatrix = HM.HashMap Hero [Matchup]
 newtype ConstMathcupMap = ConstMathcupMap UnderlyingMatchupMatrix
 
-instance MatchupMap  ConstMathcupMap Identity Matchup where
-  for (ConstMathcupMap map') heroId = maybe mempty pure $ HM.lookup heroId map'
+instance Stats ConstMathcupMap Identity Matchup where
+  for (ConstMathcupMap map') hero' = maybe mempty pure $ HM.lookup hero' map'
 
 newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap
 newConstMatchupMatrix = ConstMathcupMap
 
-newMatchupMatrix :: AppConfig -> IO MatchupMatrix
-newMatchupMatrix config = do
+newMatchupMatrix :: AppConfig -> HeroDB -> IO MatchupMatrix
+newMatchupMatrix config heroDB = do
   url <- prepareUrl (appConfigOpenDotaApi config)
   m   <- newTVarIO HM.empty
-  return MatchupMatrix { matchupMatrixContainer = m, matchupMatrixUrl = url }
+  return MatchupMatrix { matchupMatrixContainer = m
+                       , matchupMatrixUrl       = url
+                       , matchupMatrixHeroDB    = heroDB
+                       }
 
 prepareUrl :: (MonadFail m, MonadThrow m) => Text -> m URL
 prepareUrl url = do
   uri <- mkURI $ url
   maybe (fail "could not parse the URL") (pure) $ useHttpsURI uri
-
-toHero :: HeroResponse -> Hero
-toHero response = Hero { heroName = heroResponseName response
-                       , heroID   = toHeroId $ heroResponseID response
-                       }
-
-toHeroId :: HeroIDResponse -> HeroID
-toHeroId = HeroID . unHeroID
-
-toMatchup :: HeroMatchupResponse -> Matchup
-toMatchup response = Matchup
-  { matchupHeroId      = toHeroId $ heroMatchupResponseHeroID response
-  , matchupGamesPlayed = heroMatchupGamesResponsePlayed response
-  , matchupWins        = heroMatchupResponseWins response
-  }
