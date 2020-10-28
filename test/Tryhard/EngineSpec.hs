@@ -4,13 +4,13 @@ module Tryhard.EngineSpec
 where
 
 import           Test.Hspec
+import           Test.Fixture
+
+import           Data.Functor.Identity          ( Identity(runIdentity) )
 
 import           Tryhard.Engine
 import           Tryhard.Types
-import           Tryhard.Fixture
-import           Tryhard.OpenDota
-
-import           Data.Functor.Identity          ( Identity(runIdentity) )
+import           Tryhard.Stats
 
 spec :: Spec
 spec = do

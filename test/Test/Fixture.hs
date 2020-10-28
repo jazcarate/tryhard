@@ -1,9 +1,10 @@
-module Tryhard.Fixture where
+module Test.Fixture where
+
+import           Data.Text                      ( Text )
+import qualified Data.HashMap.Strict           as HM
 
 import           Tryhard.Types
-import           Data.Text                      ( Text )
-import           Tryhard.OpenDota
-import qualified Data.HashMap.Strict           as HM
+import           Tryhard.Stats
 
 hero :: Text -> Int -> Hero
 hero name id' = Hero { heroName = name, heroID = HeroID id' }
@@ -23,6 +24,11 @@ matchup hero' played wins = Matchup { matchupHero        = hero'
                                     , matchupWins        = wins
                                     }
 
+vsAxe :: Matchup
+vsAxe = matchup axe 10 5
+
+vsBane :: Matchup
+vsBane = matchup bane 100 0
+
 matchups :: ConstMathcupMap
-matchups = newConstMatchupMatrix
-  $ HM.fromList [(antiMage, [matchup axe 10 5, matchup bane 100 0])]
+matchups = newConstMatchupMatrix $ HM.fromList [(antiMage, [vsAxe, vsBane])]

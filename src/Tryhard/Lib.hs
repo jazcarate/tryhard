@@ -2,12 +2,17 @@
 
 module Tryhard.Lib where
 
-import           Conferer
+import           Conferer                       ( defaultConfig
+                                                , getFromRootConfig
+                                                )
 import           Tryhard.Config                 ( AppConfig )
-import           Tryhard.OpenDota
 import           Data.List                      ( sort )
+
+import           Tryhard.Stats
+import           Tryhard.Stats.Mode
+import           Tryhard.OpenDota
+import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
-import           Tryhard.OpenDota.Internal      ( byNameLike )
 
 run :: IO ()
 run = do
@@ -27,11 +32,3 @@ run = do
   putStrLn $ "Best matchups for " <> show hero
   putStrLn $ "By WinPercentage"
   putStrLn $ show $ (\x -> (getHero x, x)) <$> wp
-
-recomend
-  :: (Stats container m result)
-  => container
-  -> [Hero]
-  -> [Hero]
-  -> m [(Hero, result)]
-recomend = undefined
