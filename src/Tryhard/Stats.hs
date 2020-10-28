@@ -15,7 +15,7 @@ import           Tryhard.OpenDota.HeroDB
 
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero [Matchup]
-
+-- TODO: Betternames to the Stats Intances
 data MatchupMatrix = MatchupMatrix {
   matchupMatrixHeroDB :: HeroDB,
   matchupMatrixContainer :: TVar UnderlyingMatchupMatrix,
@@ -27,13 +27,13 @@ instance Stats MatchupMatrix IO Matchup where
     cache <- readTVarIO $ container
     let val = HM.lookup hero cache
     case val of
-      Just x  -> pure x
+      Just x  -> pure $ statsResult hero x
       Nothing -> do
         response <- getHeroMatchup (matchupMatrixAppConfig matrix)
                                    (matchupMatrixHeroDB matrix)
                                    hero
         _ <- atomically $ modifyTVar container (HM.insert hero response)
-        pure response
+        pure $ statsResult hero response
     where container = matchupMatrixContainer matrix
 
 newMatchupMatrix :: AppConfig -> HeroDB -> IO MatchupMatrix
@@ -48,7 +48,12 @@ newMatchupMatrix config heroDB = do
 newtype ConstMathcupMap = ConstMathcupMap UnderlyingMatchupMatrix
 
 instance Stats ConstMathcupMap Identity Matchup where
-  for (ConstMathcupMap map') hero' = maybe mempty pure $ HM.lookup hero' map'
+  for (ConstMathcupMap map') hero = maybe mempty pure f
+   where
+    f :: Maybe (StatsResult Matchup)
+    f = do
+      matchups <- HM.lookup hero map'
+      pure $ statsResult hero matchups
 
 newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap
 newConstMatchupMatrix = ConstMathcupMap
@@ -56,4 +61,4 @@ newConstMatchupMatrix = ConstMathcupMap
 newtype HeroStat = HeroStat HeroDB
 
 instance Stats HeroStat Identity Hero where
-  for (HeroStat db) hero = pure $ delete hero $ findAll db
+  for (HeroStat db) hero = pure $ statsResult hero $ delete hero $ findAll db

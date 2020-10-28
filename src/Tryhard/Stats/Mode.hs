@@ -75,3 +75,16 @@ instance Show NumberOfLegs where
 
 instance WithHero NumberOfLegs where
   getHero = unNumberOfLegsHero
+
+---------------------------------
+---------------------------------
+newtype Max a = Max { unMax :: a }
+
+instance (Semigroup a) => Semigroup (Max a) where
+  a <> b = Max $ ((<>) `on` unMax) a b
+
+instance (Eq a) => Eq (Max a) where
+  (==) = (==) `on` unMax
+
+instance (Ord a) => Ord (Max a) where
+  compare = compare `on` unMax

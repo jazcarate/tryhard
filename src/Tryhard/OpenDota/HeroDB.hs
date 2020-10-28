@@ -12,7 +12,7 @@ newtype HeroDB = HeroDB { unHeroDB :: HM.HashMap HeroID Hero }
 byNameLike :: HeroDB -> Text -> Maybe Hero
 byNameLike HeroDB { unHeroDB = haystack } needle = do
   let entries = HM.elems haystack
-  let matches = Fuzzy.filter needle entries mempty mempty heroName True
+  let matches = Fuzzy.filter needle entries mempty mempty heroName False
   Fuzzy.original <$> listToMaybe matches
 
 byHeroId :: HeroDB -> HeroID -> Maybe Hero
