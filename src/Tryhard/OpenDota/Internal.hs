@@ -23,16 +23,17 @@ import           Network.HTTP.Types.Header      ( hETag )
 
 newtype HeroIDResponse = HeroIDResponse { unHeroID :: Int } deriving (Eq, Show)
 
-data HeroResponse = HeroResponse {
-  heroResponseName :: Text,
-  heroResponseID :: HeroIDResponse
-}
+data HeroResponse = HeroResponse
+  { heroResponseName :: Text
+  , heroResponseID :: HeroIDResponse
+  , heroResponseLegs :: Int
+  }
 
-data HeroMatchupResponse = HeroMatchupResponse {
-  heroMatchupResponseHeroID :: HeroIDResponse,
-  heroMatchupGamesResponsePlayed :: Int,
-  heroMatchupResponseWins :: Int
-} deriving (Show)
+data HeroMatchupResponse = HeroMatchupResponse
+  { heroMatchupResponseHeroID :: HeroIDResponse
+  , heroMatchupGamesResponsePlayed :: Int
+  , heroMatchupResponseWins :: Int
+  } deriving (Show)
 
 newtype ETag = ETag { unETag :: BS.ByteString}
 
@@ -45,7 +46,10 @@ instance FromJSON HeroMatchupResponse where
 
 instance FromJSON HeroResponse where
   parseJSON = withObject "hero" $ \v ->
-    HeroResponse <$> (v .: "localized_name") <*> (HeroIDResponse <$> v .: "id")
+    HeroResponse
+      <$> (v .: "localized_name")
+      <*> (HeroIDResponse <$> v .: "id")
+      <*> (v .: "legs")
 
 newtype JSONMapList a = JSONMapList { unList ::  [a] }
 

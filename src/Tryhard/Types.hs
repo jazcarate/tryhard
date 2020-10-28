@@ -6,7 +6,9 @@ module Tryhard.Types where
 import           Data.Text                      ( Text
                                                 , unpack
                                                 )
-import           Data.Hashable                  ( Hashable, hashWithSalt )
+import           Data.Hashable                  ( Hashable
+                                                , hashWithSalt
+                                                )
 import           Data.Function                  ( on )
 import           Data.Aeson                     ( FromJSONKey )
 
@@ -15,6 +17,7 @@ newtype HeroID = HeroID { unHero :: Int } deriving (Eq, Ord, Hashable, FromJSONK
 data Hero = Hero
   { heroID   :: HeroID
   , heroName :: Text
+  , heroLegs :: Int
   } deriving (Eq)
 
 

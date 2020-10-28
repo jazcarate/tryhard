@@ -60,3 +60,18 @@ instance Show NumberOfMatches where
 
 instance WithHero NumberOfMatches where
   getHero = matchupHero . unNumberOfMatchesMatchup
+
+---------------------------------
+newtype NumberOfLegs = NumberOfLegs { unNumberOfLegsHero :: Hero }
+
+instance Eq NumberOfLegs where
+  (==) = (==) `on` (heroLegs . unNumberOfLegsHero)
+
+instance Ord NumberOfLegs where
+  compare = compare `on` (heroLegs . unNumberOfLegsHero)
+
+instance Show NumberOfLegs where
+  show = (\s -> s ++ " legs") . (show . heroLegs . unNumberOfLegsHero)
+
+instance WithHero NumberOfLegs where
+  getHero = unNumberOfLegsHero

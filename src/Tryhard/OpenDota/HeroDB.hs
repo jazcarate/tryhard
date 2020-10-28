@@ -22,3 +22,6 @@ byHeroId HeroDB { unHeroDB = haystack } needle = do
 
 fromList :: [(HeroID, Hero)] -> HeroDB
 fromList = HeroDB . HM.fromList
+
+findAll :: HeroDB -> [Hero]
+findAll = HM.elems . unHeroDB

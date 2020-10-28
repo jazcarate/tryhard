@@ -28,7 +28,12 @@ toDB :: [I.HeroResponse] -> HeroDB
 toDB responses = fromList $ entry <$> responses
  where
   entry resposne =
-    (heroId, Hero { heroID = heroId, heroName = I.heroResponseName resposne })
+    ( heroId
+    , Hero { heroID   = heroId
+           , heroName = I.heroResponseName resposne
+           , heroLegs = I.heroResponseLegs resposne
+           }
+    )
     where heroId = toheroID $ I.heroResponseID resposne
 
 toheroID :: I.HeroIDResponse -> HeroID

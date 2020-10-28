@@ -5,6 +5,7 @@ module Tryhard.Stats where
 import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity )
+import           Data.List                      ( delete )
 
 import           Tryhard.Config
 import           Tryhard.Types
@@ -51,3 +52,8 @@ instance Stats ConstMathcupMap Identity Matchup where
 
 newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap
 newConstMatchupMatrix = ConstMathcupMap
+
+newtype HeroStat = HeroStat HeroDB
+
+instance Stats HeroStat Identity Hero where
+  for (HeroStat db) hero = pure $ delete hero $ findAll db

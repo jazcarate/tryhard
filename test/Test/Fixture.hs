@@ -6,17 +6,18 @@ import qualified Data.HashMap.Strict           as HM
 import           Tryhard.Types
 import           Tryhard.Stats
 
-hero :: Text -> Int -> Hero
-hero name id' = Hero { heroName = name, heroID = HeroID id' }
+hero :: Text -> Int -> Int -> Hero
+hero name id' legs =
+  Hero { heroName = name, heroID = HeroID id', heroLegs = legs }
 
 antiMage :: Hero
-antiMage = hero "Anti-Mage" 1
+antiMage = Hero { heroName = "Anti-Mage", heroID = HeroID 1, heroLegs = 2 }
 
 axe :: Hero
-axe = hero "Axe" 2
+axe = Hero { heroName = "Axe", heroID = HeroID 2, heroLegs = 2 }
 
 bane :: Hero
-bane = hero "Bane" 3
+bane = Hero { heroName = "Bane", heroID = HeroID 3, heroLegs = 4 }
 
 matchup :: Hero -> Int -> Int -> Matchup
 matchup hero' played wins = Matchup { matchupHero        = hero'
