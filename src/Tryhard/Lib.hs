@@ -6,14 +6,13 @@ import           Conferer                       ( defaultConfig
                                                 , getFromRootConfig
                                                 )
 import           Tryhard.Config                 ( AppConfig )
-import           Data.List                      ( sort )
--- import           Data.Functor.Identity          ( Identity(runIdentity) )
 
 import           Tryhard.Stats
 import           Tryhard.Stats.Mode
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
+import           Tryhard.Engine
 
 
 run :: IO ()
@@ -34,14 +33,11 @@ run = do
 
   let wp =
         take 4
-          $ reverse
-          $ sort
-          $ toList
-          $ ((WinPercentage <$> resp1) <> (WinPercentage <$> resp2))
+          $   recomend
+          $   unMax
+          <$> (Max <$> WinPercentage <$> resp1)
+          <>  (Max <$> WinPercentage <$> resp2)
   -- _ <- start heroes
   putStrLn $ "Best matchups for " <> show hero1 <> " and " <> show hero2
-  putStrLn $ "By NumberOfLegs"
-  putStrLn
-    $   show
-    $   (\x -> (unInnerResultHero x, unInnerResult x, getHero x))
-    <$> wp
+  putStrLn $ "By Max <$> WinPercentage"
+  putStrLn $ show wp

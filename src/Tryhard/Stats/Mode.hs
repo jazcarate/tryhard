@@ -12,14 +12,36 @@ import           Tryhard.Types
 
 newtype WinPercentage = WinPercentage { unWinPercentageMatchup :: Matchup }
 
-instance WithHero WinPercentage where
-  getHero = matchupHero . unWinPercentageMatchup
-
 instance Eq WinPercentage where
-  (==) = (==) `on` unWinPercentageMatchup
+  (==) = (==) `on` (winRate . unWinPercentageMatchup)
 
 instance Ord WinPercentage where
   compare = compare `on` (winRate . unWinPercentageMatchup)
+
+newtype SumWinPercentage = SumWinPercentage { unSumWinPercentage :: WinPercentage }
+
+instance Semigroup (SumWinPercentage) where
+  (SumWinPercentage (WinPercentage Matchup { matchupGamesPlayed = played1, matchupWins = wins1 })) <> (SumWinPercentage (WinPercentage Matchup { matchupGamesPlayed = played2, matchupWins = wins2 }))
+    = SumWinPercentage $ WinPercentage $ Matchup
+      { matchupGamesPlayed = played1 + played2
+      , matchupWins        = wins1 + wins2
+      }
+
+newtype Max a = Max { unMax :: a }
+
+instance Eq a => Eq (Max a) where
+  (==) = (==) `on` unMax
+
+instance Ord a => Ord (Max a) where
+  compare = compare `on` unMax
+
+instance Ord a => Semigroup (Max a) where
+  m1 <> m2 = case compare m1 m2 of
+    EQ -> m1
+    GT -> m1
+    LT -> m2
+
+newtype KeepHero a = KeepHero { unKeepHero :: a }
 
 instance Ord WinRate where
   compare NoMatches       NoMatches       = EQ
@@ -58,9 +80,6 @@ instance Ord NumberOfMatches where
 instance Show NumberOfMatches where
   show = (show . matchupGamesPlayed . unNumberOfMatchesMatchup)
 
-instance WithHero NumberOfMatches where
-  getHero = matchupHero . unNumberOfMatchesMatchup
-
 ---------------------------------
 newtype NumberOfLegs = NumberOfLegs { unNumberOfLegsHero :: Hero }
 
@@ -73,18 +92,5 @@ instance Ord NumberOfLegs where
 instance Show NumberOfLegs where
   show = (\s -> s ++ " legs") . (show . heroLegs . unNumberOfLegsHero)
 
-instance WithHero NumberOfLegs where
-  getHero = unNumberOfLegsHero
-
 ---------------------------------
 ---------------------------------
-newtype Max a = Max { unMax :: a }
-
-instance (Semigroup a) => Semigroup (Max a) where
-  a <> b = Max $ ((<>) `on` unMax) a b
-
-instance (Eq a) => Eq (Max a) where
-  (==) = (==) `on` unMax
-
-instance (Ord a) => Ord (Max a) where
-  compare = compare `on` unMax

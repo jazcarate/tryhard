@@ -7,6 +7,7 @@ import           Tryhard.Config
 import           Tryhard.Types
 import qualified Tryhard.OpenDota.Internal     as I
 import           Tryhard.OpenDota.HeroDB
+import           Data.Functor.Compose
 
 
 heroesETagFile :: FilePath -> FilePath
@@ -39,19 +40,21 @@ toDB responses = fromList $ entry <$> responses
 toheroID :: I.HeroIDResponse -> HeroID
 toheroID = HeroID . I.unHeroID
 
-getHeroMatchup :: AppConfig -> HeroDB -> Hero -> IO [Matchup]
+getHeroMatchup :: AppConfig -> HeroDB -> Hero -> IO (StatsResult Matchup)
 getHeroMatchup appConfig heroeDB hero = do
   url         <- prepareUrl (appConfigOpenDotaApi appConfig)
-  rawResponse <- I.getHeroMatchup (unHero heroId) url
-  pure $ catMaybes $ toMatchup <$> rawResponse -- Ignore matchups that we can't find hero for
+  rawResponse <- I.getHeroMatchup (heroId) url
+  let y =
+        getCompose
+          $   (byHeroId heroeDB)
+          <$> (Compose $ toMatchupEntry <$> rawResponse)
+  pure $ statsFromList $ catMaybes $ sequence <$> y -- Ignore matchups that we can't find hero for
  where
-  heroId = heroID hero
-  toMatchup :: I.HeroMatchupResponse -> Maybe Matchup
-  toMatchup response = do
-    hero' <-
-      (heroeDB) `byHeroId` (toheroID $ I.heroMatchupResponseHeroID response)
-    pure $ Matchup
-      { matchupHero        = hero'
-      , matchupGamesPlayed = I.heroMatchupGamesResponsePlayed response
-      , matchupWins        = I.heroMatchupResponseWins response
-      }
+  heroId = unHero $ heroID hero
+  toMatchupEntry :: I.HeroMatchupResponse -> (Matchup, HeroID)
+  toMatchupEntry response =
+    ( Matchup { matchupGamesPlayed = I.heroMatchupGamesResponsePlayed response
+              , matchupWins        = I.heroMatchupResponseWins response
+              }
+    , toheroID $ I.heroMatchupResponseHeroID response
+    )

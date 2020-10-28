@@ -11,7 +11,8 @@ import           Data.Hashable                  ( Hashable
                                                 )
 import           Data.Function                  ( on )
 import           Data.Aeson                     ( FromJSONKey )
-import           Control.Monad                  ( liftM2 )
+import qualified Data.HashMap.Strict           as HM
+import           Data.Tuple                     ( swap )
 
 newtype HeroID = HeroID { unHero :: Int } deriving (Eq, Ord, Hashable, FromJSONKey)
 
@@ -28,64 +29,28 @@ instance Hashable Hero where
 instance Show Hero where
   show = unpack . heroName
 
+-- The entries are swapped for ease of `Compose`
+statsFromList :: [(a, Hero)] -> StatsResult a
+statsFromList entries = StatsResult $ HM.fromList $ swap <$> entries
+
 data Matchup = Matchup
-  { matchupHero      :: Hero
-  , matchupGamesPlayed :: Int
+  { matchupGamesPlayed :: Int
   , matchupWins        :: Int
   }
 
-instance Eq Matchup where
-  (==) = (==) `on` matchupHero
+newtype StatsResult a = StatsResult { unStatsResults :: HM.HashMap Hero a }
 
-class WithHero a where
-  getHero :: a -> Hero
+instance Semigroup a => Semigroup (StatsResult a) where
+  (StatsResult a) <> (StatsResult b) = StatsResult $ HM.unionWith (<>) a b
 
-class Valuable a where
-  value :: Fractional p => a -> p
-
-
-data InnerResult a
-  = InnerResult { unInnerResultHero :: Hero, unInnerResult :: a }
-
-instance Functor InnerResult where
-  fmap f InnerResult { unInnerResultHero = hero, unInnerResult = a } =
-    InnerResult hero (f a)
-
-instance (Eq a) => Eq (InnerResult a) where
-  (==) = ((==) `on` unInnerResult) &&& ((==) `on` unInnerResultHero)
-   where
-    (&&&) :: (Eq b) => (b -> b -> Bool) -> (b -> b -> Bool) -> b -> b -> Bool
-    (&&&) = liftM2 (liftM2 (&&))
-
-instance (Ord a) => Ord (InnerResult a) where
-  compare = compare `on` unInnerResult
-
-instance WithHero a => WithHero (InnerResult a) where
-  getHero = getHero . unInnerResult
-
-newtype StatsResult a = StatsResult { unStatsResults :: [InnerResult a] }
-
-instance Semigroup (StatsResult a) where
-  a <> b = StatsResult $ ((<>) `on` unStatsResults) a b
-
-instance Monoid (StatsResult a) where
-  mempty = StatsResult mempty
+empty :: StatsResult a
+empty = StatsResult HM.empty
 
 instance Functor StatsResult where
-  fmap f sr = StatsResult sr'
-    where sr' = (\x -> f <$> x) <$> (unStatsResults sr)
+  fmap f = StatsResult . fmap f . unStatsResults
 
 instance (Eq a) => Eq (StatsResult a) where
   (==) = (==) `on` unStatsResults
-
-instance (Ord a) => Ord (StatsResult a) where
-  compare = compare `on` unStatsResults
-
-statsResult :: Hero -> [a] -> StatsResult a
-statsResult h as = StatsResult $ InnerResult h <$> as
-
-toList :: StatsResult a -> [InnerResult a]
-toList = unStatsResults
 
 class (Monad m) => Stats container m res where
   for :: container -> Hero -> m (StatsResult res)

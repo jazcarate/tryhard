@@ -26,8 +26,6 @@ spec = do
         let m1 = WinPercentage (matchup bane 100 n1)
             m2 = WinPercentage (matchup axe 100 n2)
         in  (n1 /= 0 && n2 /= 0) ==> n1 `compare` n2 == m1 `compare` m2
-      it "extracts the hero" $ do
-        getHero (WinPercentage vsAxe) `shouldBe` axe
       it "can be displayed" $ do
         show (WinPercentage vsAxe) `shouldBe` "50.00%"
       describe "0 games played" $ do
@@ -47,8 +45,6 @@ spec = do
         let m1 = NumberOfMatches (matchup bane n1 100)
             m2 = NumberOfMatches (matchup axe n2 100)
         in  n1 `compare` n2 == m1 `compare` m2
-      it "extracts the hero" $ do
-        getHero (NumberOfMatches vsAxe) `shouldBe` axe
       it "can be displayed" $ do
         show (NumberOfMatches vsAxe) `shouldBe` "10"
 
@@ -61,8 +57,6 @@ spec = do
         let m1 = NumberOfLegs (hero "foo" 1 legs1)
             m2 = NumberOfLegs (hero "bar" 2 legs2)
         in  legs1 `compare` legs2 == m1 `compare` m2
-      it "extracts the hero" $ do
-        getHero (NumberOfLegs axe) `shouldBe` axe
       it "can be displayed" $ do
         show (NumberOfLegs axe) `shouldBe` "2 legs"
   
