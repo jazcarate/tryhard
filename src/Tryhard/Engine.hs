@@ -22,10 +22,9 @@ instance (Eq a) => Eq (Result a) where
 instance (Ord a) => Ord (Result a) where
   compare = compare `on` resultValue
 
--- TODO if I inline `recomend'`I get a type error.. why?
-recomend' :: StatsResult res -> [(Hero, res)]
-recomend' sr = HM.toList $ unStatsResults sr
-
 
 recomend :: (Ord res) => StatsResult res -> [Result res]
-recomend sr = reverse $ sort $ fromTuple <$> recomend' sr
+recomend sr = reverse $ sort $ fromTuple <$> x sr
+ where
+  x :: StatsResult a -> [(Hero, a)] -- TODO understand why if I inline this I get an ambigous type
+  x sr' = HM.toList $ unStatsResults sr'

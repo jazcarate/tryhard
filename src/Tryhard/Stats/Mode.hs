@@ -1,4 +1,8 @@
-module Tryhard.Stats.Mode where
+module Tryhard.Stats.Mode
+  ( module Tryhard.Stats.Mode
+  , module Data.Semigroup
+  )
+where
 
 import           Data.Ratio                     ( Ratio
                                                 , denominator
@@ -7,6 +11,7 @@ import           Data.Ratio                     ( Ratio
                                                 )
 import           Numeric                        ( showGFloat )
 import           Data.Function                  ( on )
+import           Data.Semigroup                 ( Max(Max, getMax) )
 
 import           Tryhard.Types
 
@@ -21,32 +26,15 @@ instance Ord WinPercentage where
 newtype SumWinPercentage = SumWinPercentage { unSumWinPercentage :: WinPercentage }
 
 instance Semigroup (SumWinPercentage) where
-  (SumWinPercentage (WinPercentage Matchup { matchupGamesPlayed = played1, matchupWins = wins1 })) <> (SumWinPercentage (WinPercentage Matchup { matchupGamesPlayed = played2, matchupWins = wins2 }))
-    = SumWinPercentage $ WinPercentage $ Matchup
-      { matchupGamesPlayed = played1 + played2
-      , matchupWins        = wins1 + wins2
-      }
-
-newtype Max a = Max { unMax :: a }
-
-instance Eq a => Eq (Max a) where
-  (==) = (==) `on` unMax
-
-instance Ord a => Ord (Max a) where
-  compare = compare `on` unMax
-
-instance Ord a => Semigroup (Max a) where
-  m1 <> m2 = case compare m1 m2 of
-    EQ -> m1
-    GT -> m1
-    LT -> m2
+  (SumWinPercentage (WinPercentage m1)) <> (SumWinPercentage (WinPercentage m2))
+    = SumWinPercentage $ WinPercentage $ sumMatchups m1 m2
 
 newtype KeepHero a = KeepHero { unKeepHero :: a }
 
 instance Ord WinRate where
   compare NoMatches       NoMatches       = EQ
-  compare NoMatches       (SomeMatches _) = GT
-  compare (SomeMatches _) NoMatches       = LT
+  compare NoMatches       (SomeMatches _) = LT
+  compare (SomeMatches _) NoMatches       = GT
   compare (SomeMatches a) (SomeMatches b) = compare a b
 
 data WinRate = NoMatches | SomeMatches (Ratio Int) deriving (Eq)
@@ -69,16 +57,36 @@ showRatio pos r = showGFloat (Just 2) val pos
 
 
 ---------------------------------
-newtype NumberOfMatches = NumberOfMatches { unNumberOfMatchesMatchup :: Matchup }
+newtype NumberOfMatches = NumberOfMatches { unNumberOfMatches :: Int } deriving (Eq, Ord)
 
-instance Eq NumberOfMatches where
-  (==) = (==) `on` (matchupGamesPlayed . unNumberOfMatchesMatchup)
-
-instance Ord NumberOfMatches where
-  compare = compare `on` (matchupGamesPlayed . unNumberOfMatchesMatchup)
+numberOfMatches :: Matchup -> NumberOfMatches
+numberOfMatches = NumberOfMatches . matchupGamesPlayed
 
 instance Show NumberOfMatches where
-  show = (show . matchupGamesPlayed . unNumberOfMatchesMatchup)
+  show = show . unNumberOfMatches
+
+newtype SumNumberOfMatches = SumNumberOfMatches { unSumNumberOfMatches :: NumberOfMatches } deriving (Eq, Show)
+
+newtype Sum a = Sum { getSum :: a } deriving (Eq, Show)
+
+class Summable a where
+  (<+>) :: a -> a -> a
+
+instance Summable NumberOfMatches where
+  (NumberOfMatches a) <+> (NumberOfMatches b) = NumberOfMatches $ a <+> b
+
+instance Summable Int where
+  (<+>) = (+)
+
+instance Summable a => Semigroup (Sum a) where
+  (Sum a) <> (Sum b) = Sum $ a <+> b
+
+-- This might be the <> for Matchup... but something doesen't sit right
+sumMatchups :: Matchup -> Matchup -> Matchup
+sumMatchups (Matchup { matchupGamesPlayed = played1, matchupWins = wins1 }) (Matchup { matchupGamesPlayed = played2, matchupWins = wins2 })
+  = Matchup { matchupGamesPlayed = played1 + played2
+            , matchupWins        = wins1 + wins2
+            }
 
 ---------------------------------
 newtype NumberOfLegs = NumberOfLegs { unNumberOfLegsHero :: Hero }

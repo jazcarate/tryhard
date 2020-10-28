@@ -9,14 +9,18 @@ import           Test.Fixture
 import           Data.Functor.Identity          ( Identity(runIdentity) )
 
 import           Tryhard.Engine
+import           Tryhard.Stats.Mode
 import           Tryhard.Types
-import           Tryhard.Stats
 
 spec :: Spec
 spec = do
   describe "#recomend" $ do
-    it "antimage is good agains axe and bane" $ do
-      matchupHero <$> recomend' matchups antiMage `shouldBe` [axe, bane]
+    it "antimage is good agains bane, then" $ do
+      recomend' antiMage `shouldBe` [bane, axe]
 
-recomend' :: ConstMathcupMap -> Hero -> [Matchup]
-recomend' m h = runIdentity $ recomend m h
+recomend' :: Hero -> [Hero]
+recomend' h = runIdentity $ do
+  mups <- matchups `for` h
+  let stats   = numberOfMatches <$> mups
+  let results = recomend stats
+  pure $ resultHero <$> results

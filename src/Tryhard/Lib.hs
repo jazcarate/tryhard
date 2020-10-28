@@ -34,9 +34,9 @@ run = do
   let wp =
         take 4
           $   recomend
-          $   unMax
-          <$> (Max <$> WinPercentage <$> resp1)
-          <>  (Max <$> WinPercentage <$> resp2)
+          $   getMax
+          <$> (Max <$> numberOfMatches <$> resp1)
+          <>  (Max <$> numberOfMatches <$> resp2)
   -- _ <- start heroes
   putStrLn $ "Best matchups for " <> show hero1 <> " and " <> show hero2
   putStrLn $ "By Max <$> WinPercentage"

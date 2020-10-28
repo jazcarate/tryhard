@@ -8,48 +8,48 @@ import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
 import           Test.Fixture
 
-import           Tryhard.Types
 import           Tryhard.Stats.Mode
-
-import           Debug.Trace
 
 spec :: Spec
 spec = do
-  -- TODO comeup with a better abstraction over this "Mode1", "Mode2" things
-  describe "Mode1" $ do
+  describe "Compare" $ do
     describe "#WinPercentage" $ do
-      it "A WinPercentage is equal to itself" $ do
-        WinPercentage vsAxe == WinPercentage vsAxe `shouldBe` True
-      it "antimage has won more vs Bane than to Axe" $ do
-        WinPercentage vsAxe `shouldSatisfy` (<) (WinPercentage vsBane)
-      prop "sorts by the number of matches" $ \(n1, n2) ->
-        let m1 = WinPercentage (matchup bane 100 n1)
-            m2 = WinPercentage (matchup axe 100 n2)
+      it "a percentage is equal to itself" $ do
+        WinPercentage (percent 50) == WinPercentage (percent 50) `shouldBe` True
+      it "can be compared" $ do
+        (WinPercentage (percent 50))
+          <          (WinPercentage (percent 100))
+          `shouldBe` True
+      prop "compares by the wins when played are the same" $ \(n1, n2) ->
+        let m1 = WinPercentage (percent n1)
+            m2 = WinPercentage (percent n2)
         in  (n1 /= 0 && n2 /= 0) ==> n1 `compare` n2 == m1 `compare` m2
       it "can be displayed" $ do
-        show (WinPercentage vsAxe) `shouldBe` "50.00%"
+        show (WinPercentage (percent 50)) `shouldBe` "50.00%"
       describe "0 games played" $ do
-        let zeroMatchesPlayed = WinPercentage (matchup axe 0 100)
+        let zeroMatchesPlayed = WinPercentage notPlayed
         it "shows a null" $ do
           show zeroMatchesPlayed `shouldBe` "-%"
         prop "is less than any other (played) matchup" $ \n ->
-          n /= 0 ==> zeroMatchesPlayed `shouldSatisfy` (<)
-            (WinPercentage (matchup axe n 100))
+          (n /= 0)
+            ==> (          (zeroMatchesPlayed < (WinPercentage (matchup n 100)))
+                `shouldBe` True
+                )
 
     describe "#NumberOfMatches" $ do
-      it "A NumberOfMatches is equal to itself" $ do
-        NumberOfMatches vsAxe == NumberOfMatches vsAxe `shouldBe` True
-      it "antimage has less times played against axe than bane" $ do
-        (NumberOfMatches vsAxe) < (NumberOfMatches vsBane) `shouldBe` True
+      it "a numberOfMatches is equal to itself" $ do
+        NumberOfMatches 50 == NumberOfMatches 50 `shouldBe` True
+      it "can be compared" $ do
+        (NumberOfMatches 10) < (NumberOfMatches 100) `shouldBe` True
       prop "sorts by the number of matches" $ \(n1, n2) ->
-        let m1 = NumberOfMatches (matchup bane n1 100)
-            m2 = NumberOfMatches (matchup axe n2 100)
+        let m1 = NumberOfMatches n1
+            m2 = NumberOfMatches n2
         in  n1 `compare` n2 == m1 `compare` m2
       it "can be displayed" $ do
-        show (NumberOfMatches vsAxe) `shouldBe` "10"
+        show (NumberOfMatches 10) `shouldBe` "10"
 
     describe "#NumberOfLegs" $ do
-      it "A NumberOfLegs is equal to itself" $ do
+      it "a numberOfLegs is equal to itself" $ do
         NumberOfLegs axe == NumberOfLegs axe `shouldBe` True
       it "axe has less legs than bane" $ do
         (NumberOfLegs axe) < (NumberOfLegs bane) `shouldBe` True
@@ -59,12 +59,49 @@ spec = do
         in  legs1 `compare` legs2 == m1 `compare` m2
       it "can be displayed" $ do
         show (NumberOfLegs axe) `shouldBe` "2 legs"
-  
-  
-  describe "Mode2" $ do
+
+  describe "Merging" $ do
     describe "#Max" $ do
+      describe ".NumberOfMatches" $ do
+        prop "collapses two NumberOfMatches, keeping the bigger one"
+          $ \(played1, played2) ->
+              let m1 = Max $ (NumberOfMatches played1)
+                  m2 = Max $ (NumberOfMatches played2)
+              in  case compare played1 played2 of
+                    EQ -> m1 <> m2 `shouldBe` m1
+                    LT -> m1 <> m2 `shouldBe` m2
+                    GT -> m1 <> m2 `shouldBe` m1
       describe ".WinPercentage" $ do
-        it "sorts based on the biggest of the two" $ do
-          
-        it "regardless of how many games are played"
-        it "even if other results are shitty"
+        prop
+            "collapses two WinPercentage, keeping the better one (when all have been played"
+          $ \(win1, played1, win2, played2) ->
+              let m1 = Max $ (WinPercentage (matchup played1 win1))
+                  m2 = Max $ (WinPercentage (matchup played2 win2))
+                  ratio :: Int -> Int -> Float
+                  ratio w p = (realToFrac w / realToFrac p)
+              in  (played1 /= 0 && played2 /= 0)
+                    ==> case
+                          compare (win1 `ratio` played1) (win2 `ratio` played2)
+                        of
+                          EQ -> m1 <> m2 `shouldBe` m1
+                          LT -> m1 <> m2 `shouldBe` m2
+                          GT -> m1 <> m2 `shouldBe` m1
+        it "chooses the played one over the not played one" $ do
+          (Max $ WinPercentage (notPlayed))
+            <>         (Max $ WinPercentage (percent 10))
+            `shouldBe` (Max $ WinPercentage (percent 10))
+
+    describe "#Sum" $ do
+      describe ".NumberOfMatches" $ do
+        prop "collapses two NumberOfMatches, adding the number of matches"
+          $ \(played1, played2) ->
+              let m1 = Sum $ (NumberOfMatches played1)
+                  m2 = Sum $ (NumberOfMatches played2)
+              in  m1 <> m2 `shouldBe` (Sum $ NumberOfMatches (played1 + played2))
+      describe ".WinPercentage" $ do
+        it "can colapse with no matches, and simply ignores it" $ do
+          getMax
+              (  Max (WinPercentage notPlayed)
+              <> Max (WinPercentage (percent 100))
+              )
+            `shouldBe` (WinPercentage (percent 100))
