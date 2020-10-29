@@ -22,16 +22,17 @@ data MatchupMatrix = MatchupMatrix {
   matchupMatrixAppConfig :: AppConfig
 }
 
+
 instance Stats MatchupMatrix IO Matchup where
-  for matrix hero = do
+  forHero matrix hero = do
     cache <- readTVarIO $ container
     let val = HM.lookup hero cache
     case val of
       Just x  -> pure x
       Nothing -> do
         response <- getHeroMatchup (matchupMatrixAppConfig matrix)
-                                   (matchupMatrixHeroDB matrix)
-                                   hero
+                                  (matchupMatrixHeroDB matrix)
+                                  hero
         _ <- atomically $ modifyTVar container (HM.insert hero response)
         pure response
     where container = matchupMatrixContainer matrix
@@ -48,7 +49,7 @@ newMatchupMatrix config heroDB = do
 newtype ConstMathcupMap = ConstMathcupMap UnderlyingMatchupMatrix
 
 instance Stats ConstMathcupMap Identity Matchup where
-  for (ConstMathcupMap map') hero = pure $ maybe empty id $ HM.lookup hero map'
+  forHero (ConstMathcupMap map') hero = pure $ maybe empty id $ HM.lookup hero map'
 
 newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap
 newConstMatchupMatrix = ConstMathcupMap
@@ -56,7 +57,7 @@ newConstMatchupMatrix = ConstMathcupMap
 newtype HeroStat = HeroStat HeroDB
 
 instance Stats HeroStat Identity Hero where
-  for (HeroStat db) hero =
+  forHero (HeroStat db) hero =
     pure $ statsFromList $ dup <$> (delete hero $ findAll db)
 
 dup :: a -> (a, a)
