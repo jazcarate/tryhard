@@ -32,6 +32,10 @@ instance Show Hero where
 instance Ord Hero where
   compare = compare `on` heroName
 
+-- This is very strange, but as I'm unioning Stats reults based on heros; this lets me `mconcat` over statresults of heroes
+instance Semigroup Hero where
+  h <> _ = h
+
 -- The entries are swapped for ease of `Compose`
 statsFromList :: [(a, Hero)] -> StatsResult a
 statsFromList entries = StatsResult $ HM.fromList $ swap <$> entries
@@ -40,6 +44,12 @@ data Matchup = Matchup
   { matchupGamesPlayed :: Int
   , matchupWins        :: Int
   }
+
+instance Semigroup Matchup where
+  (Matchup { matchupGamesPlayed = played1, matchupWins = wins1 }) <> (Matchup { matchupGamesPlayed = played2, matchupWins = wins2 })
+    = Matchup { matchupGamesPlayed = played1 + played2
+              , matchupWins        = wins1 + wins2
+              }
 
 newtype StatsResult a = StatsResult { unStatsResults :: HM.HashMap Hero a }
 
@@ -99,7 +109,7 @@ instance Show MatchComp where
 comp :: MatchComp
 comp = MatchComp mempty mempty
 
--- TODO Make this lens
+-- TODO Make lens out of team comp
 with :: TeamComp -> MatchComp -> MatchComp
 with w MatchComp { unMatchCompA = a, unMatchCompB = b } =
   MatchComp { unMatchCompA = a <> w, unMatchCompB = b }

@@ -1,8 +1,4 @@
-module Tryhard.Stats.Mode
-  ( module Tryhard.Stats.Mode
-  , module Data.Semigroup
-  )
-where
+module Tryhard.Stats.Mode where
 
 import           Data.Ratio                     ( Ratio
                                                 , denominator
@@ -11,7 +7,6 @@ import           Data.Ratio                     ( Ratio
                                                 )
 import           Numeric                        ( showGFloat )
 import           Data.Function                  ( on )
-import           Data.Semigroup                 ( Max(Max, getMax) )
 
 import           Tryhard.Types
 
@@ -57,9 +52,17 @@ numberOfMatches :: Matchup -> NumberOfMatches
 numberOfMatches = NumberOfMatches . matchupGamesPlayed
 
 instance Show NumberOfMatches where
-  show = show . unNumberOfMatches
+  show = (\s -> s ++ " matches") . (show . unNumberOfMatches)
 
-newtype Sum a = Sum { getSum :: a } deriving (Eq, Ord, Show)
+newtype Sum a = Sum { getSum :: a } deriving (Eq, Ord)
+
+instance Show a => Show (Sum a) where
+  show (Sum a) = show a
+
+newtype Max a = Max { getMax :: a } deriving (Eq, Ord)
+
+instance Show a => Show (Max a) where
+  show (Max a) = show a
 
 class Summable a where
   (<+>) :: a -> a -> a
@@ -73,24 +76,14 @@ instance Summable Int where
 instance Summable a => Semigroup (Sum a) where
   (Sum a) <> (Sum b) = Sum $ a <+> b
 
--- This might be the <> for Matchup... but something doesen't sit right
-sumMatchups :: Matchup -> Matchup -> Matchup
-sumMatchups (Matchup { matchupGamesPlayed = played1, matchupWins = wins1 }) (Matchup { matchupGamesPlayed = played2, matchupWins = wins2 })
-  = Matchup { matchupGamesPlayed = played1 + played2
-            , matchupWins        = wins1 + wins2
-            }
-
 ---------------------------------
-newtype NumberOfLegs = NumberOfLegs { unNumberOfLegsHero :: Hero }
+newtype NumberOfLegs = NumberOfLegs { unNumberOfLegs :: Int } deriving (Eq, Ord, Bounded)
 
-instance Eq NumberOfLegs where
-  (==) = (==) `on` (heroLegs . unNumberOfLegsHero)
-
-instance Ord NumberOfLegs where
-  compare = compare `on` (heroLegs . unNumberOfLegsHero)
+numberOfLegs :: Hero -> NumberOfLegs
+numberOfLegs = NumberOfLegs . heroLegs
 
 instance Show NumberOfLegs where
-  show = (\s -> s ++ " legs") . (show . heroLegs . unNumberOfLegsHero)
+  show = (\s -> s ++ " legs") . (show . unNumberOfLegs)
 
 ---------------------------------
 ---------------------------------

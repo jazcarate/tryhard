@@ -2,29 +2,27 @@ module Tryhard.Engine where
 
 
 import qualified Data.HashMap.Strict           as HM
-import           Data.List                      ( sort )
+import           Data.List                      ( sortBy )
 import           Data.Function                  ( on )
 
 import           Tryhard.Types
 
 
-data Result a = Result {
+data Result = Result {
     resultHero :: Hero,
-    resultValue :: a
-} deriving (Show)
+    resultValue :: String
+}
 
-fromTuple :: (Hero, a) -> Result a
-fromTuple = uncurry Result
+instance Show Result where
+  show Result { resultHero = hero, resultValue = value } =
+    show hero <> " - " <> value
 
-instance (Eq a) => Eq (Result a) where
-  (==) = (==) `on` resultValue
-
-instance (Ord a) => Ord (Result a) where
-  compare = compare `on` resultValue
+fromTuple :: Show a => (Hero, a) -> Result
+fromTuple (h, a) = Result h (show a)
 
 
-recomend :: (Ord res) => StatsResult res -> [Result res]
-recomend sr = reverse $ sort $ fromTuple <$> x sr
+recomend :: (Ord res, Show res) => StatsResult res -> [Result]
+recomend sr = reverse $ fromTuple <$> x sr
  where
-  x :: StatsResult a -> [(Hero, a)] -- TODO understand why if I inline this I get an ambigous type
-  x sr' = HM.toList $ unStatsResults sr'
+  x :: Ord a => StatsResult a -> [(Hero, a)] -- TODO understand why if I inline this I get an ambigous type
+  x sr' = sortBy (compare `on` snd) $ HM.toList $ unStatsResults $ sr'
