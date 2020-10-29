@@ -1,10 +1,8 @@
 module Test.Fixture where
 
 import           Data.Text                      ( Text )
-import qualified Data.HashMap.Strict           as HM
 
 import           Tryhard.Types
-import           Tryhard.Stats
 
 hero :: Text -> Int -> Int -> Hero
 hero name id' legs =
@@ -32,8 +30,3 @@ percent n = matchup 100 n
 
 notPlayed :: Matchup
 notPlayed = matchup 0 0
-
-
-matchups :: ConstMathcupMap
-matchups = newConstMatchupMatrix $ HM.fromList
-  [(antiMage, StatsResult $ HM.fromList [(axe, percent 50), (bane, percent 100)])]

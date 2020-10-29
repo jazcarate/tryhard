@@ -97,7 +97,9 @@ spec = do
           $ \(played1, played2) ->
               let m1 = Sum $ (NumberOfMatches played1)
                   m2 = Sum $ (NumberOfMatches played2)
-              in  m1 <> m2 `shouldBe` (Sum $ NumberOfMatches (played1 + played2))
+              in  m1
+                    <>         m2
+                    `shouldBe` (Sum $ NumberOfMatches (played1 + played2))
       describe ".WinPercentage" $ do
         it "can colapse with no matches, and simply ignores it" $ do
           getMax

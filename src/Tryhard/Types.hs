@@ -1,5 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Tryhard.Types where
 
@@ -44,8 +43,11 @@ data Matchup = Matchup
 
 newtype StatsResult a = StatsResult { unStatsResults :: HM.HashMap Hero a }
 
-instance Semigroup a => Semigroup (StatsResult a) where
+instance (Semigroup a) => Semigroup (StatsResult a) where
   (StatsResult a) <> (StatsResult b) = StatsResult $ HM.unionWith (<>) a b
+
+instance (Semigroup a) => Monoid (StatsResult a) where
+  mempty = StatsResult HM.empty
 
 empty :: StatsResult a
 empty = StatsResult HM.empty
@@ -55,9 +57,6 @@ instance Functor StatsResult where
 
 instance (Eq a) => Eq (StatsResult a) where
   (==) = (==) `on` unStatsResults
-
-class (Monad m) => Stats container m res where
-  forHero :: container -> Hero -> m (StatsResult res)
 
 newtype TeamComp = TeamComp { unTeamComp :: S.Set Hero }
 
@@ -73,19 +72,25 @@ instance Monoid TeamComp where
 instance Show TeamComp where
   show (TeamComp set) = show set
 
--- Could this be a Funcotr (monoid? maybe) and keep this structure to be mapped by stat results?
-data LookAt = All MatchComp | MyTeam MatchComp | EnemyTeam MatchComp
-
-toList :: LookAt -> [Hero]
-toList la = case la of
-  All       (MatchComp a b) -> toListComp a <> toListComp b
-  MyTeam    (MatchComp a _) -> toListComp a
-  EnemyTeam (MatchComp _ b) -> toListComp b
- where
-  toListComp :: TeamComp -> [Hero]
-  toListComp (TeamComp s) = S.toList s
-
 data MatchComp = MatchComp { unMatchCompA :: TeamComp, unMatchCompB :: TeamComp }
+
+newtype MyTeam = MyTeam { unMyTeam :: MatchComp }
+newtype EnemyTeam = EnemyTeam { unEnemyTeam :: MatchComp }
+
+instance Listable MyTeam where
+  toList (MyTeam (MatchComp a _)) = toList a
+
+instance Listable EnemyTeam where
+  toList (EnemyTeam (MatchComp _ b)) = toList b
+
+instance Listable TeamComp where
+  toList (TeamComp s) = S.toList s
+
+instance Listable MatchComp where
+  toList (MatchComp a b) = toList a <> toList b
+
+class Listable a where
+  toList :: a -> [Hero]
 
 instance Show MatchComp where
   show MatchComp { unMatchCompA = a, unMatchCompB = b } =

@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module Tryhard.Stats where
 
 import           Control.Concurrent.STM
@@ -11,54 +9,54 @@ import           Tryhard.Config
 import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
+import           Data.Functor.Compose           ( getCompose
+                                                , Compose(Compose)
+                                                )
 
 
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
--- TODO: Betternames to the Stats Intances
-data MatchupMatrix = MatchupMatrix {
-  matchupMatrixHeroDB :: HeroDB,
-  matchupMatrixContainer :: TVar UnderlyingMatchupMatrix,
-  matchupMatrixAppConfig :: AppConfig
-}
 
+-- TODO if StatsResult is traversable, m can be "inside" a and sequence after to not keep track of `m`
+type Stats m a = [Hero] -> m (StatsResult a)
 
-instance Stats MatchupMatrix IO Matchup where
-  forHero matrix hero = do
-    cache <- readTVarIO $ container
-    let val = HM.lookup hero cache
-    case val of
-      Just x  -> pure x
-      Nothing -> do
-        response <- getHeroMatchup (matchupMatrixAppConfig matrix)
-                                  (matchupMatrixHeroDB matrix)
-                                  hero
-        _ <- atomically $ modifyTVar container (HM.insert hero response)
-        pure response
-    where container = matchupMatrixContainer matrix
+forHero
+  :: AppConfig
+  -> HeroDB
+  -> TVar UnderlyingMatchupMatrix
+  -> Hero
+  -> IO (StatsResult Matchup)
+forHero config heroDB container hero = do
+  cache <- readTVarIO $ container
+  let val = HM.lookup hero cache
+  case val of
+    Just x  -> pure x
+    Nothing -> do
+      response <- getHeroMatchup config heroDB hero
+      _        <- atomically $ modifyTVar container (HM.insert hero response)
+      pure response
 
-newMatchupMatrix :: AppConfig -> HeroDB -> IO MatchupMatrix
-newMatchupMatrix config heroDB = do
-  m <- newTVarIO HM.empty
-  return MatchupMatrix { matchupMatrixContainer = m
-                       , matchupMatrixAppConfig = config
-                       , matchupMatrixHeroDB    = heroDB
-                       }
+withMatchup
+  :: Semigroup a => AppConfig -> HeroDB -> (Matchup -> a) -> IO (Stats IO a)
+withMatchup config heroDB toSemigroup = do
+  container <- newTVarIO HM.empty
+  pure $ \heroes -> do
+    let forOne = forHero config heroDB container
+    let statsL = forOne <$> heroes
+    stats <- sequence statsL
+    let stats' = getCompose $ toSemigroup <$> Compose stats
+    pure $ mconcat stats'
 
--- For testing pourposes. Shou
-newtype ConstMathcupMap = ConstMathcupMap UnderlyingMatchupMatrix
+const :: Monoid a => HM.HashMap Hero (StatsResult a) -> Stats Identity a
+const matrix heroes = pure $ mconcat $ forOne <$> heroes
+  where forOne hero = maybe mempty id $ HM.lookup hero matrix
 
-instance Stats ConstMathcupMap Identity Matchup where
-  forHero (ConstMathcupMap map') hero = pure $ maybe empty id $ HM.lookup hero map'
-
-newConstMatchupMatrix :: UnderlyingMatchupMatrix -> ConstMathcupMap
-newConstMatchupMatrix = ConstMathcupMap
-
-newtype HeroStat = HeroStat HeroDB
-
-instance Stats HeroStat Identity Hero where
-  forHero (HeroStat db) hero =
-    pure $ statsFromList $ dup <$> (delete hero $ findAll db)
-
-dup :: a -> (a, a)
-dup a = (a, a)
+-- Maybe this shouldb e a lazy map?, as we are AxA each hero
+constHeroDB :: HeroDB -> HM.HashMap Hero (StatsResult Hero)
+constHeroDB db = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
+ where
+  allHeros = findAll db
+  forOne :: Hero -> StatsResult Hero
+  forOne hero = statsFromList $ dup <$> (delete hero $ findAll db)
+  dup :: a -> (a, a)
+  dup a = (a, a)

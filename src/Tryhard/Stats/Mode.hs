@@ -23,12 +23,6 @@ instance Eq WinPercentage where
 instance Ord WinPercentage where
   compare = compare `on` (winRate . unWinPercentageMatchup)
 
-newtype SumWinPercentage = SumWinPercentage { unSumWinPercentage :: WinPercentage }
-
-instance Semigroup (SumWinPercentage) where
-  (SumWinPercentage (WinPercentage m1)) <> (SumWinPercentage (WinPercentage m2))
-    = SumWinPercentage $ WinPercentage $ sumMatchups m1 m2
-
 newtype KeepHero a = KeepHero { unKeepHero :: a }
 
 instance Ord WinRate where
@@ -65,9 +59,7 @@ numberOfMatches = NumberOfMatches . matchupGamesPlayed
 instance Show NumberOfMatches where
   show = show . unNumberOfMatches
 
-newtype SumNumberOfMatches = SumNumberOfMatches { unSumNumberOfMatches :: NumberOfMatches } deriving (Eq, Show)
-
-newtype Sum a = Sum { getSum :: a } deriving (Eq, Show)
+newtype Sum a = Sum { getSum :: a } deriving (Eq, Ord, Show)
 
 class Summable a where
   (<+>) :: a -> a -> a

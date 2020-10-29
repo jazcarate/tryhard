@@ -1,5 +1,4 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-
 module Tryhard.OpenDota.Internal where
 
 import           Data.Aeson
