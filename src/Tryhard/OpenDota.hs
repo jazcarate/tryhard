@@ -2,13 +2,13 @@ module Tryhard.OpenDota where
 
 import           System.FilePath                ( (</>) )
 import           Data.Maybe                     ( catMaybes )
+import           Data.Functor.Compose
+import           Data.Bifunctor                 ( bimap )
 
 import           Tryhard.Config
 import           Tryhard.Types
 import qualified Tryhard.OpenDota.Internal     as I
 import           Tryhard.OpenDota.HeroDB
-import           Data.Functor.Compose
-import           Data.Bifunctor                 ( bimap )
 
 
 
@@ -97,8 +97,7 @@ toCombo db (I.HeroComboResponse { I.heroComboResponseTeamA = teamA, I.heroComboR
     let (teamA', teamB') = tuple x
     let teams            = (teamA', teamB')
     let (entriesMyTeam, entriesEnemyTeam) =
-          bimap (\h -> ((,) memptyWith) <$> h) (\h -> ((,) memptyAgainst) <$> h)
-            $ teams
+          bimap (\h -> ((,) withC) <$> h) (\h -> ((,) againstC) <$> h) $ teams
     pure $ entriesMyTeam <> entriesEnemyTeam
 
 

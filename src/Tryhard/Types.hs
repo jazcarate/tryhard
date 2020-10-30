@@ -51,21 +51,17 @@ data Combo = Combo
   , comboOponentTeam :: Int
   }
 
-memptyWith :: Combo
-memptyWith = Combo 1 0
+withC :: Combo
+withC = Combo 1 0
 
-memptyAgainst :: Combo
-memptyAgainst = Combo 0 1
+againstC :: Combo
+againstC = Combo 0 1
 
---TODO needed?
 instance Semigroup Combo where
   Combo { comboSameTeam = sameA, comboOponentTeam = enemyA } <> Combo { comboSameTeam = sameB, comboOponentTeam = enemyB }
     = Combo { comboSameTeam    = sameA + sameB
             , comboOponentTeam = enemyA + enemyB
             }
-
-instance Monoid Combo where
-  mempty = Combo 0 0
 
 newtype ByWith = ByWith { unByWith :: Combo }
 
@@ -114,7 +110,10 @@ instance Functor StatsResult where
 instance (Eq a) => Eq (StatsResult a) where
   (==) = (==) `on` unStatsResults
 
-newtype TeamComp = TeamComp { unTeamComp :: S.Set Hero }
+newtype TeamComp = TeamComp { unTeamComp :: S.Set Hero } deriving (Eq)
+
+instance Hashable TeamComp where
+  hashWithSalt salt (TeamComp a) = hashWithSalt salt (S.toList a)
 
 heroTC :: Hero -> TeamComp
 heroTC = TeamComp . S.singleton
@@ -128,7 +127,10 @@ instance Monoid TeamComp where
 instance Show TeamComp where
   show (TeamComp set) = show set
 
-data MatchComp = MatchComp { unMatchCompA :: TeamComp, unMatchCompB :: TeamComp }
+data MatchComp = MatchComp { unMatchCompA :: TeamComp, unMatchCompB :: TeamComp } deriving (Eq)
+
+instance Hashable MatchComp where
+  hashWithSalt salt (MatchComp a b) = salt `hashWithSalt` a `hashWithSalt` b
 
 newtype MyTeam = MyTeam { unMyTeam :: MatchComp }
 newtype EnemyTeam = EnemyTeam { unEnemyTeam :: MatchComp }

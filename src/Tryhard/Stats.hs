@@ -1,19 +1,24 @@
 module Tryhard.Stats where
 
-import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity
                                                 , runIdentity
                                                 )
 import           Data.List                      ( delete )
+import           Data.Functor.Compose           ( getCompose
+                                                , Compose(Compose)
+                                                )
+import           Control.Concurrent.STM         ( modifyTVar
+                                                , atomically
+                                                , readTVarIO
+                                                , newTVarIO
+                                                )
+import           Data.Hashable                  ( Hashable )
 
 import           Tryhard.Config
 import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
-import           Data.Functor.Compose           ( getCompose
-                                                , Compose(Compose)
-                                                )
 
 
 
@@ -25,33 +30,33 @@ newtype Stats m a = Stats { runStats :: MatchComp -> m (StatsResult a) }
 instance (Functor m) => Functor (Stats m) where
   fmap f (Stats r) = Stats $ \h -> getCompose $ f <$> Compose (r h)
 
-forHeroMatchup
-  :: AppConfig
-  -> HeroDB
-  -> TVar UnderlyingMatchupMatrix
-  -> Hero
-  -> IO (StatsResult Matchup)
-forHeroMatchup config heroDB container hero = do
-  cache <- readTVarIO $ container
-  let val = HM.lookup hero cache
-  case val of
-    Just x  -> pure x
-    Nothing -> do
-      response <- getHeroMatchup config heroDB hero
-      _        <- atomically $ modifyTVar container (HM.insert hero response)
-      pure response
+cached :: (Hashable a, Eq a) => (a -> IO res) -> IO (a -> IO res)
+cached f = do
+  cacheT <- newTVarIO HM.empty
+  pure $ \what -> do
+    cache <- readTVarIO $ cacheT
+    let val = HM.lookup what cache
+    case val of
+      Just x  -> pure x
+      Nothing -> do
+        response <- f what
+        _        <- atomically $ modifyTVar cacheT (HM.insert what response)
+        pure response
 
-withMatchup
-  :: AppConfig -> HeroDB -> TVar UnderlyingMatchupMatrix -> Stats IO Matchup
-withMatchup config heroDB container = Stats $ \heroes -> do
-  let forOne = forHeroMatchup config heroDB container
+forHeroMatchup :: AppConfig -> HeroDB -> IO (Hero -> IO (StatsResult Matchup))
+forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
+
+withMatchup :: AppConfig -> HeroDB -> Stats IO Matchup
+withMatchup config heroDB = Stats $ \heroes -> do
+  forOne <- forHeroMatchup config heroDB
   let statsL = forOne <$> toList heroes
   stats <- sequence statsL
   pure $ mconcat stats
 
--- TODO add cache?
 withCombo :: AppConfig -> HeroDB -> Stats IO Combo
-withCombo config heroDB = Stats $ getHeroCombo config heroDB
+withCombo config heroDB = Stats $ \matchup -> do
+  x <- cached $ getHeroCombo config heroDB
+  x matchup
 
 withConst
   :: (Semigroup a) => HM.HashMap Hero (StatsResult a) -> Stats Identity a

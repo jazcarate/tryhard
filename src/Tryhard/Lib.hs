@@ -6,9 +6,10 @@ import           Conferer                       ( defaultConfig
 
 import qualified Data.Text                     as T
 import           Data.List                      ( intercalate )
-import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity )
-import           Control.Concurrent.STM         ( newTVarIO )
+import           Data.Functor.Compose           ( Compose(Compose)
+                                                , getCompose
+                                                )
 
 import           Tryhard.Stats
 import           Tryhard.Stats.Mode
@@ -16,9 +17,6 @@ import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
 import           Tryhard.Engine
-import           Data.Functor.Compose           ( Compose(Compose)
-                                                , getCompose
-                                                )
 
 
 readHero :: HeroDB -> IO [Hero]
@@ -34,16 +32,17 @@ readHero db = go []
       str -> do
         maybe (go acc) (\h -> go (h : acc)) $ db `byNameLike` str
 
--- TODO: this is tail end recursion, no?
 choose :: String -> [(String, a)] -> IO a
-choose what choices = do
-  putStrLn $ what <> ": " <> intercalate "," (fst <$> choices)
-  line <- getLine
-  case lookup line choices of -- TODO more inteligente lookup. Numbered? Default first?
-    Nothing -> do
-      putStrLn $ "Coudn't find that " <> what <> ". Try again."
-      choose what choices
-    Just chosen -> pure chosen
+choose what choices = go
+ where
+  go = do
+    putStrLn $ what <> ": " <> intercalate "," (fst <$> choices)
+    line <- getLine
+    case lookup line choices of -- TODO more inteligente lookup. Numbered? Default first?
+      Nothing -> do
+        putStrLn $ "Coudn't find that " <> what <> ". Try again."
+        go
+      Just chosen -> pure chosen
 
 data What = WhatWinPercengate (Stats IO WinPercentage)
   | WhatLegs (Stats Identity NumberOfLegs)
@@ -89,10 +88,7 @@ run = do
   let composition = foldl (flip with) comp $ heroTC <$> heroes
   putStrLn $ "Recomendarion for " <> show composition
 
-  -- TODO extract init to a outside function?
-  matchupCache <- newTVarIO HM.empty
-
-  let matchup = withMatchup appConfig db matchupCache
+  let matchup = withMatchup appConfig db
   let legged =
         withConst $ getCompose $ numberOfLegs <$> Compose (constHeroDB db)
   let combos = withCombo appConfig db

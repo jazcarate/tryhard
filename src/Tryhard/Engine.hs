@@ -20,7 +20,6 @@ instance Show Result where
 fromTuple :: Show a => (Hero, a) -> Result
 fromTuple (h, a) = Result h (show a)
 
-
 recomend :: (Ord res, Show res) => StatsResult res -> [Result]
 recomend sr = reverse $ fromTuple <$> x sr
  where
