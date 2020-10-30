@@ -18,6 +18,9 @@ import           System.FilePath                ( takeDirectory )
 import           System.Directory               ( createDirectoryIfMissing )
 import           Data.List                      ( find )
 import           Network.HTTP.Types.Header      ( hETag )
+import           Data.Functor.Compose           ( Compose(Compose)
+                                                , getCompose
+                                                )
 
 
 newtype HeroIDResponse = HeroIDResponse { unHeroID :: Int } deriving (Eq, Show)
@@ -32,6 +35,11 @@ data HeroMatchupResponse = HeroMatchupResponse
   { heroMatchupResponseHeroID :: HeroIDResponse
   , heroMatchupGamesResponsePlayed :: Int
   , heroMatchupResponseWins :: Int
+  } deriving (Show)
+
+data HeroComboResponse = HeroComboResponse
+  { heroComboResponseTeamA :: [HeroIDResponse]
+  , heroComboResponseTeamB :: [HeroIDResponse]
   } deriving (Show)
 
 newtype ETag = ETag { unETag :: BS.ByteString}
@@ -50,6 +58,12 @@ instance FromJSON HeroResponse where
       <*> (HeroIDResponse <$> v .: "id")
       <*> (v .: "legs")
 
+instance FromJSON HeroComboResponse where
+  parseJSON = withObject "hero combo" $ \v ->
+    HeroComboResponse
+      <$> (getCompose $ HeroIDResponse <$> Compose (v .: "teama"))
+      <*> (getCompose $ HeroIDResponse <$> Compose (v .: "teamb"))
+
 newtype JSONMapList a = JSONMapList { unList ::  [a] }
 
 instance FromJSON a => FromJSON (JSONMapList a) where
@@ -57,8 +71,14 @@ instance FromJSON a => FromJSON (JSONMapList a) where
     $ \obj -> JSONMapList <$> (mapM parseJSON $ toList obj)
 
 getHeroMatchupRaw :: URL -> Req [HeroMatchupResponse]
-getHeroMatchupRaw (heroMatchupUrl, option) =
-  responseBody <$> req GET heroMatchupUrl NoReqBody jsonResponse option
+getHeroMatchupRaw = simpleGetList
+
+getHeroComboRaw :: URL -> Req [HeroComboResponse]
+getHeroComboRaw = simpleGetList
+
+simpleGetList :: FromJSON a => URL -> Req [a]
+simpleGetList (url, option) =
+  responseBody <$> req GET url NoReqBody jsonResponse option
 
 getHerosRaw :: ETag -> URL -> Req (Maybe ETag, BS.ByteString)
 getHerosRaw etag (heroJsonUrl, option) = reqBr
@@ -108,3 +128,23 @@ getHeroMatchup :: Int -> URL -> IO ([HeroMatchupResponse])
 getHeroMatchup heroId (baseUrl, option) = runReq defaultHttpConfig
   $ getHeroMatchupRaw (url, option)
   where url = baseUrl /: "heroes" /: (pack $ show heroId) /: "matchups"
+
+
+getHerosCombo :: [Int] -> [Int] -> URL -> IO ([HeroComboResponse])
+getHerosCombo heroIdTeamA heroIdTeamB (baseUrl, baseOptions) = do
+  responses <- runReq defaultHttpConfig $ getHeroComboRaw (url, option)
+  pure $ (tidyTeams heroIdTeamA) <$> responses
+ where
+  option = baseOptions <> query
+  query =
+    mconcat $ map ((=:) "teamA") heroIdTeamA <> map ((=:) "teamB") heroIdTeamB
+  url = baseUrl /: "findMatches"
+
+-- This way "team A" is alyways tam A that was sent
+tidyTeams :: [Int] -> HeroComboResponse -> HeroComboResponse
+tidyTeams heroes (HeroComboResponse a b) = HeroComboResponse a' b'
+ where
+  (a', b') = if (unHeroID <$> a) `included` heroes then (a, b) else (b, a)
+
+included :: Eq a => [a] -> [a] -> Bool
+included needle haystack = any id $ (==) <$> needle <*> haystack

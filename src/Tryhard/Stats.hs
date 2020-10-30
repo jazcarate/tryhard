@@ -20,18 +20,18 @@ import           Data.Functor.Compose           ( getCompose
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 
 -- TODO if StatsResult is traversable, m can be "inside" a and sequence after to not keep track of `m`
-newtype Stats m a = Stats { runStats :: [Hero] -> m (StatsResult a) }
+newtype Stats m a = Stats { runStats :: MatchComp -> m (StatsResult a) }
 
 instance (Functor m) => Functor (Stats m) where
   fmap f (Stats r) = Stats $ \h -> getCompose $ f <$> Compose (r h)
 
-forHero
+forHeroMatchup
   :: AppConfig
   -> HeroDB
   -> TVar UnderlyingMatchupMatrix
   -> Hero
   -> IO (StatsResult Matchup)
-forHero config heroDB container hero = do
+forHeroMatchup config heroDB container hero = do
   cache <- readTVarIO $ container
   let val = HM.lookup hero cache
   case val of
@@ -44,13 +44,18 @@ forHero config heroDB container hero = do
 withMatchup
   :: AppConfig -> HeroDB -> TVar UnderlyingMatchupMatrix -> Stats IO Matchup
 withMatchup config heroDB container = Stats $ \heroes -> do
-  let forOne = forHero config heroDB container
-  let statsL = forOne <$> heroes
+  let forOne = forHeroMatchup config heroDB container
+  let statsL = forOne <$> toList heroes
   stats <- sequence statsL
   pure $ mconcat stats
 
-withConst :: Semigroup a => HM.HashMap Hero (StatsResult a) -> Stats Identity a
-withConst matrix = Stats $ \heroes -> pure $ mconcat $ forOne <$> heroes
+-- TODO add cache?
+withCombo :: AppConfig -> HeroDB -> Stats IO Combo
+withCombo config heroDB = Stats $ getHeroCombo config heroDB
+
+withConst
+  :: (Semigroup a) => HM.HashMap Hero (StatsResult a) -> Stats Identity a
+withConst matrix = Stats $ \heroes -> pure $ mconcat $ forOne <$> toList heroes
   where forOne hero = maybe mempty id $ HM.lookup hero matrix
 
 class (Monad m) => ToIO m where
@@ -68,6 +73,6 @@ constHeroDB db = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
  where
   allHeros = findAll db
   forOne :: Hero -> StatsResult Hero
-  forOne hero = statsFromList $ dup <$> (delete hero $ findAll db)
-  dup :: a -> (a, a)
-  dup a = (a, a)
+  forOne hero = unLHS <$> (statsFromList $ dup <$> (delete hero $ findAll db))
+  dup :: a -> (LHS a, a)
+  dup a = (LHS a, a)

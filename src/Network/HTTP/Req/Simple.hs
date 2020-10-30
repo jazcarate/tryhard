@@ -2,7 +2,7 @@
 
 module Network.HTTP.Req.Simple
   ( module Network.HTTP.Req
-  , URL
+  , module Network.HTTP.Req.Simple
   )
 where
 

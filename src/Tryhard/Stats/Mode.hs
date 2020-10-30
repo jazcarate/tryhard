@@ -85,5 +85,7 @@ numberOfLegs = NumberOfLegs . heroLegs
 instance Show NumberOfLegs where
   show = (\s -> s ++ " legs") . (show . unNumberOfLegs)
 
+instance Semigroup NumberOfLegs where
+  (NumberOfLegs a) <> (NumberOfLegs b) = NumberOfLegs (a + b)
 ---------------------------------
 ---------------------------------

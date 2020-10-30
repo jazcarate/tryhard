@@ -8,6 +8,8 @@ import           Tryhard.Types
 import qualified Tryhard.OpenDota.Internal     as I
 import           Tryhard.OpenDota.HeroDB
 import           Data.Functor.Compose
+import           Data.Bifunctor                 ( bimap )
+
 
 
 heroesETagFile :: FilePath -> FilePath
@@ -58,3 +60,50 @@ getHeroMatchup appConfig heroeDB hero = do
               }
     , toheroID $ I.heroMatchupResponseHeroID response
     )
+
+inComp :: Hero -> MatchComp -> Bool
+inComp h mc = h `elem` toList mc
+
+getHeroCombo :: AppConfig -> HeroDB -> MatchComp -> IO (StatsResult Combo)
+getHeroCombo appConfig heroeDB matchComp = do
+  url         <- prepareUrl (appConfigOpenDotaApi appConfig)
+  rawResponse <- I.getHerosCombo (unHero <$> heroID <$> teamA)
+                                 (unHero <$> heroID <$> teamB)
+                                 url
+  let allEntries = mconcat $ (toCombo heroeDB) <$> rawResponse
+  let entries    = filter (\(_, h) -> not $ h `inComp` matchComp) allEntries
+  pure $ statsFromList entries -- Ignore matchups that we can't find hero in any all the combo
+  where (teamA, teamB) = toTuple matchComp
+
+-- Tuple like, but with the same `a` in both cases
+data TwoOf a = TwoOf { unTwoOfA :: a, unTwoOfB :: a }
+
+instance Functor TwoOf where
+  fmap f (TwoOf a b) = TwoOf (f a) (f b)
+
+tuple :: TwoOf a -> (a, a)
+tuple (TwoOf a b) = (a, b)
+
+toCombo :: HeroDB -> I.HeroComboResponse -> [(Combo, Hero)]
+toCombo db (I.HeroComboResponse { I.heroComboResponseTeamA = teamA, I.heroComboResponseTeamB = teamB })
+  = maybe [] id go
+ where
+  toHero :: I.HeroIDResponse -> Maybe Hero
+  toHero x = db `byHeroId` (toheroID x)
+  go :: Maybe [(Combo, Hero)]
+  go = do
+    let twoOf = TwoOf teamA teamB
+    x <- superSequence $ getCompose $ toHero <$> Compose twoOf
+    let (teamA', teamB') = tuple x
+    let teams            = (teamA', teamB')
+    let (entriesMyTeam, entriesEnemyTeam) =
+          bimap (\h -> ((,) memptyWith) <$> h) (\h -> ((,) memptyAgainst) <$> h)
+            $ teams
+    pure $ entriesMyTeam <> entriesEnemyTeam
+
+
+superSequence :: TwoOf [Maybe Hero] -> Maybe (TwoOf [Hero])
+superSequence (TwoOf a b) = do
+  x <- sequence a
+  y <- sequence b
+  pure $ TwoOf x y

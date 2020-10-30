@@ -22,6 +22,11 @@ data Hero = Hero
   , heroLegs :: Int
   } deriving (Eq)
 
+newtype LHS a = LHS { unLHS :: a }
+
+-- Warning: This semigroup is not well behaved. Please use with caution
+instance Semigroup (LHS a) where
+  a <> _ = a
 
 instance Hashable Hero where
   hashWithSalt salt = hashWithSalt salt . heroID
@@ -32,18 +37,59 @@ instance Show Hero where
 instance Ord Hero where
   compare = compare `on` heroName
 
--- This is very strange, but as I'm unioning Stats reults based on heros; this lets me `mconcat` over statresults of heroes
-instance Semigroup Hero where
-  h <> _ = h
-
 -- The entries are swapped for ease of `Compose`
-statsFromList :: [(a, Hero)] -> StatsResult a
-statsFromList entries = StatsResult $ HM.fromList $ swap <$> entries
+statsFromList :: (Semigroup a) => [(a, Hero)] -> StatsResult a
+statsFromList entries = StatsResult $ HM.fromListWith (<>) $ swap <$> entries
 
 data Matchup = Matchup
   { matchupGamesPlayed :: Int
   , matchupWins        :: Int
   }
+
+data Combo = Combo
+  { comboSameTeam :: Int
+  , comboOponentTeam :: Int
+  }
+
+memptyWith :: Combo
+memptyWith = Combo 1 0
+
+memptyAgainst :: Combo
+memptyAgainst = Combo 0 1
+
+--TODO needed?
+instance Semigroup Combo where
+  Combo { comboSameTeam = sameA, comboOponentTeam = enemyA } <> Combo { comboSameTeam = sameB, comboOponentTeam = enemyB }
+    = Combo { comboSameTeam    = sameA + sameB
+            , comboOponentTeam = enemyA + enemyB
+            }
+
+instance Monoid Combo where
+  mempty = Combo 0 0
+
+newtype ByWith = ByWith { unByWith :: Combo }
+
+instance Eq ByWith where
+  (==) = (==) `on` (comboSameTeam . unByWith)
+
+instance Ord ByWith where
+  compare = compare `on` (comboSameTeam . unByWith)
+
+instance Show ByWith where
+  show (ByWith Combo { comboSameTeam = same, comboOponentTeam = enemy }) =
+    (show same) <> " with and " <> (show enemy) <> " against"
+
+newtype ByAgainst = ByAgainst { unByAgainst :: Combo }
+
+instance Eq ByAgainst where
+  (==) = (==) `on` (comboOponentTeam . unByAgainst)
+
+instance Ord ByAgainst where
+  compare = compare `on` (comboOponentTeam . unByAgainst)
+
+instance Show ByAgainst where
+  show (ByAgainst Combo { comboSameTeam = same, comboOponentTeam = enemy }) =
+    (show enemy) <> " against and " <> (show same) <> " with"
 
 instance Semigroup Matchup where
   (Matchup { matchupGamesPlayed = played1, matchupWins = wins1 }) <> (Matchup { matchupGamesPlayed = played2, matchupWins = wins2 })
@@ -88,19 +134,21 @@ newtype MyTeam = MyTeam { unMyTeam :: MatchComp }
 newtype EnemyTeam = EnemyTeam { unEnemyTeam :: MatchComp }
 
 instance Listable MyTeam where
-  toList (MyTeam (MatchComp a _)) = toList a
+  toTuple (MyTeam (MatchComp a _)) = (toListComp a, mempty)
 
 instance Listable EnemyTeam where
-  toList (EnemyTeam (MatchComp _ b)) = toList b
+  toTuple (EnemyTeam (MatchComp _ b)) = (mempty, toListComp b)
 
-instance Listable TeamComp where
-  toList (TeamComp s) = S.toList s
+toListComp :: TeamComp -> [Hero]
+toListComp (TeamComp s) = S.toList s
 
 instance Listable MatchComp where
-  toList (MatchComp a b) = toList a <> toList b
+  toTuple (MatchComp a b) = (toListComp a, toListComp b)
 
 class Listable a where
+  toTuple :: a -> ([Hero], [Hero])
   toList :: a -> [Hero]
+  toList a = uncurry (<>) $ toTuple a
 
 instance Show MatchComp where
   show MatchComp { unMatchCompA = a, unMatchCompB = b } =
