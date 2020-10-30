@@ -50,14 +50,15 @@ getHeroMatchup appConfig heroeDB hero = do
         getCompose
           $   (byHeroId heroeDB)
           <$> (Compose $ toMatchupEntry <$> rawResponse)
-  pure $ statsFromList $ catMaybes $ sequence <$> y -- Ignore matchups that we can't find hero for
+  pure $ unLHS <$> (statsFromList $ catMaybes $ sequence <$> y) -- Ignore matchups that we can't find hero for
  where
   heroId = unHero $ heroID hero
-  toMatchupEntry :: I.HeroMatchupResponse -> (Matchup, HeroID)
+  toMatchupEntry :: I.HeroMatchupResponse -> (LHS Matchup, HeroID) -- We know that the request gets us a single matchup per hero, so we wont need to <>
   toMatchupEntry response =
-    ( Matchup { matchupGamesPlayed = I.heroMatchupGamesResponsePlayed response
-              , matchupWins        = I.heroMatchupResponseWins response
-              }
+    ( LHS $ Matchup
+      { matchupGamesPlayed = I.heroMatchupGamesResponsePlayed response
+      , matchupWins        = I.heroMatchupResponseWins response
+      }
     , toheroID $ I.heroMatchupResponseHeroID response
     )
 

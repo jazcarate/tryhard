@@ -46,19 +46,19 @@ spec = do
             m2 = NumberOfMatches n2
         in  n1 `compare` n2 == m1 `compare` m2
       it "can be displayed" $ do
-        show (NumberOfMatches 10) `shouldBe` "10"
+        show (NumberOfMatches 10) `shouldBe` "10 matches"
 
     describe "#NumberOfLegs" $ do
       it "a numberOfLegs is equal to itself" $ do
-        NumberOfLegs axe == NumberOfLegs axe `shouldBe` True
+        numberOfLegs axe == numberOfLegs axe `shouldBe` True
       it "axe has less legs than bane" $ do
-        (NumberOfLegs axe) < (NumberOfLegs bane) `shouldBe` True
+        (numberOfLegs axe) < (numberOfLegs bane) `shouldBe` True
       prop "sorts by the number of legs" $ \(legs1, legs2) ->
-        let m1 = NumberOfLegs (hero "foo" 1 legs1)
-            m2 = NumberOfLegs (hero "bar" 2 legs2)
+        let m1 = numberOfLegs (hero "foo" 1 legs1)
+            m2 = numberOfLegs (hero "bar" 2 legs2)
         in  legs1 `compare` legs2 == m1 `compare` m2
       it "can be displayed" $ do
-        show (NumberOfLegs axe) `shouldBe` "2 legs"
+        show (numberOfLegs axe) `shouldBe` "2 legs"
 
   describe "Merging" $ do
     describe "#Max" $ do

@@ -87,12 +87,6 @@ instance Show ByAgainst where
   show (ByAgainst Combo { comboSameTeam = same, comboOponentTeam = enemy }) =
     (show enemy) <> " against and " <> (show same) <> " with"
 
-instance Semigroup Matchup where
-  (Matchup { matchupGamesPlayed = played1, matchupWins = wins1 }) <> (Matchup { matchupGamesPlayed = played2, matchupWins = wins2 })
-    = Matchup { matchupGamesPlayed = played1 + played2
-              , matchupWins        = wins1 + wins2
-              }
-
 newtype StatsResult a = StatsResult { unStatsResults :: HM.HashMap Hero a }
 
 instance (Semigroup a) => Semigroup (StatsResult a) where

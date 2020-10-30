@@ -20,7 +20,7 @@ import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 
-
+import           Debug.Trace
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 
@@ -37,8 +37,8 @@ cached f = do
     cache <- readTVarIO $ cacheT
     let val = HM.lookup what cache
     case val of
-      Just x  -> pure x
-      Nothing -> do
+      Just x  -> trace "HIT" $ pure x
+      Nothing -> trace "Miss :(" $ do
         response <- f what
         _        <- atomically $ modifyTVar cacheT (HM.insert what response)
         pure response
@@ -46,17 +46,19 @@ cached f = do
 forHeroMatchup :: AppConfig -> HeroDB -> IO (Hero -> IO (StatsResult Matchup))
 forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
 
-withMatchup :: AppConfig -> HeroDB -> Stats IO Matchup
-withMatchup config heroDB = Stats $ \heroes -> do
+withMatchup
+  :: (Semigroup a) => AppConfig -> HeroDB -> (Matchup -> a) -> Stats IO a
+withMatchup config heroDB f = Stats $ \heroes -> do
   forOne <- forHeroMatchup config heroDB
   let statsL = forOne <$> toList heroes
-  stats <- sequence statsL
+  statsM <- sequence statsL
+  let stats = getCompose $ f <$> Compose statsM
   pure $ mconcat stats
 
 withCombo :: AppConfig -> HeroDB -> Stats IO Combo
-withCombo config heroDB = Stats $ \matchup -> do
+withCombo config heroDB = Stats $ \matchComp -> do
   x <- cached $ getHeroCombo config heroDB
-  x matchup
+  x matchComp
 
 withConst
   :: (Semigroup a) => HM.HashMap Hero (StatsResult a) -> Stats Identity a

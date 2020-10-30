@@ -61,6 +61,12 @@ instance Show a => Show (Sum a) where
 
 newtype Max a = Max { getMax :: a } deriving (Eq, Ord)
 
+instance Ord a => Semigroup (Max a) where
+  a <> b = case (compare `on` getMax) a b of
+    EQ -> a
+    GT -> a
+    LT -> b
+
 instance Show a => Show (Max a) where
   show (Max a) = show a
 
@@ -75,6 +81,13 @@ instance Summable Int where
 
 instance Summable a => Semigroup (Sum a) where
   (Sum a) <> (Sum b) = Sum $ a <+> b
+
+instance Summable Matchup where
+  (Matchup { matchupGamesPlayed = p1, matchupWins = w1 }) <+> (Matchup { matchupGamesPlayed = p2, matchupWins = w2 })
+    = Matchup (p1 + p2) (w1 + w2)
+
+instance Summable WinPercentage where
+  (WinPercentage a) <+> (WinPercentage b) = WinPercentage $ a <+> b
 
 ---------------------------------
 newtype NumberOfLegs = NumberOfLegs { unNumberOfLegs :: Int } deriving (Eq, Ord, Bounded)

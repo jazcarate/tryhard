@@ -44,9 +44,9 @@ choose what choices = go
         go
       Just chosen -> pure chosen
 
-data What = WhatWinPercengate (Stats IO WinPercentage)
+data What = WhatWinPercengate (Stats IO (Sum WinPercentage))
   | WhatLegs (Stats Identity NumberOfLegs)
-  | WhatMatches (Stats IO NumberOfMatches)
+  | WhatMatches (Stats IO (Sum NumberOfMatches))
   | WhatCombo (Stats IO Combo)
 
 data How = HowSum | HowMax
@@ -88,15 +88,17 @@ run = do
   let composition = foldl (flip with) comp $ heroTC <$> heroes
   putStrLn $ "Recomendarion for " <> show composition
 
-  let matchup = withMatchup appConfig db
+  -- TODO Having the sum here is soooo wrong
+  let matches = withMatchup appConfig db (Sum . numberOfMatches)
+  let wins    = withMatchup appConfig db (Sum . WinPercentage)
   let legged =
         withConst $ getCompose $ numberOfLegs <$> Compose (constHeroDB db)
   let combos = withCombo appConfig db
 
   let what = choose
         "what"
-        [ ("matches", WhatMatches $ numberOfMatches <$> matchup)
-        , ("wins"   , WhatWinPercengate $ WinPercentage <$> matchup)
+        [ ("matches", WhatMatches $ matches)
+        , ("wins"   , WhatWinPercengate $ wins)
         , ("legs"   , WhatLegs $ legged)
         , ("combos" , WhatCombo $ combos)
         ]
@@ -110,5 +112,9 @@ run = do
         , ("enemy team", LookAtEnemyTeam)
         ]
 
-  resp <- recomendBy how what lookAt composition
-  putStrLn $ show resp
+  go how what lookAt composition
+ where
+  go how what lookAt composition = do
+    resp <- recomendBy how what lookAt composition
+    putStrLn $ show resp
+    go how what lookAt composition
