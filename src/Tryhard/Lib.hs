@@ -7,9 +7,6 @@ import           Conferer                       ( defaultConfig
 import qualified Data.Text                     as T
 import           Data.List                      ( intercalate )
 import           Data.Functor.Identity          ( Identity )
-import           Data.Functor.Compose           ( Compose(Compose)
-                                                , getCompose
-                                                )
 
 import           Tryhard.Stats
 import           Tryhard.Stats.Mode
@@ -17,6 +14,9 @@ import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
 import           Tryhard.Engine
+import           Data.Algebra.Free              ( collapse
+                                                , FreeSemiGroup
+                                                )
 
 
 readHero :: HeroDB -> IO [Hero]
@@ -44,9 +44,9 @@ choose what choices = go
         go
       Just chosen -> pure chosen
 
-data What = WhatWinPercengate (Stats IO (Sum WinPercentage))
-  | WhatLegs (Stats Identity NumberOfLegs)
-  | WhatMatches (Stats IO (Sum NumberOfMatches))
+data What = WhatWinPercengate (Stats IO (FreeSemiGroup Matchup))
+  | WhatLegs (Stats Identity (FreeSemiGroup NumberOfLegs))
+  | WhatMatches (Stats IO (FreeSemiGroup Matchup))
   | WhatCombo (Stats IO Combo)
 
 data How = HowSum | HowMax
@@ -60,22 +60,25 @@ recomendBy how what _ matchcomp = do
   what' <- what
   case what' of
     WhatCombo   s -> foo matchcomp $ ByWith <$> s
-    WhatLegs    s -> foo matchcomp $ s
+    WhatLegs    s -> foo matchcomp $ collapse Sum <$> s
     WhatMatches s -> do
       how' <- how
       case how' of
-        HowSum -> foo matchcomp $ Sum <$> s
-        HowMax -> foo matchcomp $ Max <$> s
+        HowSum -> foo matchcomp $ (collapse (Sum . numberOfMatches)) <$> s
+        HowMax -> foo matchcomp $ (collapse (Max . numberOfMatches)) <$> s
     WhatWinPercengate s -> do
       how' <- how
       case how' of
-        HowSum -> foo matchcomp $ Sum <$> s
-        HowMax -> foo matchcomp $ Max <$> s
+        HowSum -> foo matchcomp $ (collapse (Sum . WinPercentage)) <$> s
+        HowMax -> foo matchcomp $ (collapse (Max . WinPercentage)) <$> s
  where
   foo :: (Show a, Ord a, ToIO m) => MatchComp -> Stats m (a) -> IO [Result]
   foo c s = do
     x <- lift $ runStats s c
     pure $ recomend x
+
+skipSelf :: (Hero -> Hero -> a) -> Hero -> Hero -> Maybe a
+skipSelf f a b = if a == b then Nothing else Just $ f a b
 
 run :: IO ()
 run = do
@@ -84,21 +87,14 @@ run = do
 
   db        <- getHeroes appConfig
 
-  heroes    <- readHero db
-  let composition = foldl (flip with) comp $ heroTC <$> heroes
-  putStrLn $ "Recomendarion for " <> show composition
-
-  -- TODO Having the sum here is soooo wrong
-  let matches = withMatchup appConfig db (Sum . numberOfMatches)
-  let wins    = withMatchup appConfig db (Sum . WinPercentage)
-  let legged =
-        withConst $ getCompose $ numberOfLegs <$> Compose (constHeroDB db)
-  let combos = withCombo appConfig db
+  matchup   <- withMatchup appConfig db
+  let legged = withConst $ constHeroDB db (skipSelf numberOfLegs)
+  combos <- withCombo appConfig db
 
   let what = choose
         "what"
-        [ ("matches", WhatMatches $ matches)
-        , ("wins"   , WhatWinPercengate $ wins)
+        [ ("matches", WhatMatches $ matchup)
+        , ("wins"   , WhatWinPercengate $ matchup)
         , ("legs"   , WhatLegs $ legged)
         , ("combos" , WhatCombo $ combos)
         ]
@@ -112,9 +108,13 @@ run = do
         , ("enemy team", LookAtEnemyTeam)
         ]
 
-  go how what lookAt composition
+  go db how what lookAt
  where
-  go how what lookAt composition = do
+  go db how what lookAt = do
+    heroes <- readHero db
+    let composition = foldl (flip with) comp $ heroTC <$> heroes
+    putStrLn $ "Recomendarion for " <> show composition
+
     resp <- recomendBy how what lookAt composition
     putStrLn $ show resp
-    go how what lookAt composition
+    go db how what lookAt

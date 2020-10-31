@@ -4,7 +4,6 @@ import qualified Data.HashMap.Strict           as HM
 import           Data.Functor.Identity          ( Identity
                                                 , runIdentity
                                                 )
-import           Data.List                      ( delete )
 import           Data.Functor.Compose           ( getCompose
                                                 , Compose(Compose)
                                                 )
@@ -14,13 +13,15 @@ import           Control.Concurrent.STM         ( modifyTVar
                                                 , newTVarIO
                                                 )
 import           Data.Hashable                  ( Hashable )
+import           Data.Algebra.Free              ( FreeSemiGroup(FreeSemiGroup) )
 
 import           Tryhard.Config
 import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 
-import           Debug.Trace
+import           Debug.Trace -- TODO: Remove
+import           Data.Maybe                     ( catMaybes )
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 
@@ -46,19 +47,19 @@ cached f = do
 forHeroMatchup :: AppConfig -> HeroDB -> IO (Hero -> IO (StatsResult Matchup))
 forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
 
-withMatchup
-  :: (Semigroup a) => AppConfig -> HeroDB -> (Matchup -> a) -> Stats IO a
-withMatchup config heroDB f = Stats $ \heroes -> do
+withMatchup :: AppConfig -> HeroDB -> IO (Stats IO (FreeSemiGroup Matchup))
+withMatchup config heroDB = do
   forOne <- forHeroMatchup config heroDB
-  let statsL = forOne <$> toList heroes
-  statsM <- sequence statsL
-  let stats = getCompose $ f <$> Compose statsM
-  pure $ mconcat stats
+  pure $ Stats $ \heroes -> do
+    let statsL = forOne <$> toList heroes
+    statsM <- sequence statsL
+    let stats = getCompose $ FreeSemiGroup <$> Compose statsM
+    pure $ mconcat stats
 
-withCombo :: AppConfig -> HeroDB -> Stats IO Combo
-withCombo config heroDB = Stats $ \matchComp -> do
-  x <- cached $ getHeroCombo config heroDB
-  x matchComp
+withCombo :: AppConfig -> HeroDB -> IO (Stats IO Combo)
+withCombo config heroDB = do
+  forOne <- cached $ getHeroCombo config heroDB
+  pure $ Stats forOne
 
 withConst
   :: (Semigroup a) => HM.HashMap Hero (StatsResult a) -> Stats Identity a
@@ -75,11 +76,12 @@ instance ToIO Identity where
   lift = pure . runIdentity
 
 -- Maybe this shouldb e a lazy map?, as we are AxA each hero
-constHeroDB :: HeroDB -> HM.HashMap Hero (StatsResult Hero)
-constHeroDB db = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
+constHeroDB
+  :: HeroDB
+  -> (Hero -> Hero -> Maybe a)
+  -> HM.HashMap Hero (StatsResult (FreeSemiGroup a))
+constHeroDB db f = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
  where
   allHeros = findAll db
-  forOne :: Hero -> StatsResult Hero
-  forOne hero = unLHS <$> (statsFromList $ dup <$> (delete hero $ findAll db))
-  dup :: a -> (LHS a, a)
-  dup a = (LHS a, a)
+  forOne hero = (statsFromList $ catMaybes $ dup hero <$> findAll db)
+  dup a b = (\c -> (FreeSemiGroup c, b)) <$> (f b a)

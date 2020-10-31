@@ -90,15 +90,24 @@ instance Summable WinPercentage where
   (WinPercentage a) <+> (WinPercentage b) = WinPercentage $ a <+> b
 
 ---------------------------------
-newtype NumberOfLegs = NumberOfLegs { unNumberOfLegs :: Int } deriving (Eq, Ord, Bounded)
+newtype NumberOfLegs = NumberOfLegs { legDifference :: Int } deriving (Eq)
 
-numberOfLegs :: Hero -> NumberOfLegs
-numberOfLegs = NumberOfLegs . heroLegs
+numberOfLegs :: Hero -> Hero -> NumberOfLegs
+numberOfLegs a b = NumberOfLegs (abs (heroLegs a - heroLegs b))
 
 instance Show NumberOfLegs where
-  show = (\s -> s ++ " legs") . (show . unNumberOfLegs)
+  show = (\s -> "Δ " ++ s ++ " legs") . (show . legDifference)
 
-instance Semigroup NumberOfLegs where
-  (NumberOfLegs a) <> (NumberOfLegs b) = NumberOfLegs (a + b)
+instance Summable NumberOfLegs where
+  (NumberOfLegs a) <+> (NumberOfLegs b) = NumberOfLegs (a <+> b)
+
+instance Ord NumberOfLegs where
+  compare = (notOrd .) . (compare `on` (legDifference))
+
+notOrd :: Ordering -> Ordering
+notOrd a = case a of
+  EQ -> EQ
+  LT -> GT
+  GT -> LT
 ---------------------------------
 ---------------------------------
