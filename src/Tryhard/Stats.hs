@@ -20,7 +20,6 @@ import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 
-import           Debug.Trace -- TODO: Remove
 import           Data.Maybe                     ( catMaybes )
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
@@ -38,8 +37,8 @@ cached f = do
     cache <- readTVarIO $ cacheT
     let val = HM.lookup what cache
     case val of
-      Just x  -> trace "HIT" $ pure x
-      Nothing -> trace "Miss :(" $ do
+      Just x  -> pure x
+      Nothing -> do
         response <- f what
         _        <- atomically $ modifyTVar cacheT (HM.insert what response)
         pure response
