@@ -25,19 +25,17 @@ getHeroes appConfig = do
   let etagFilePath   = heroesETagFile home
   let heroesFilePath = heroesJSONFile home
   heroes <- I.getHeroes etagFilePath heroesFilePath url
-  pure $ toDB heroes
+  pure $ toDB $ toHero <$> heroes
 
-toDB :: [I.HeroResponse] -> HeroDB
-toDB responses = fromList $ entry <$> responses
- where
-  entry resposne =
-    ( heroId
-    , Hero { heroID   = heroId
-           , heroName = I.heroResponseName resposne
-           , heroLegs = I.heroResponseLegs resposne
-           }
-    )
-    where heroId = toheroID $ I.heroResponseID resposne
+toHero :: I.HeroResponse -> Hero
+toHero resposne = Hero { heroID   = toheroID $ I.heroResponseID resposne
+                       , heroName = I.heroResponseName resposne
+                       , heroLegs = I.heroResponseLegs resposne
+                       }
+
+toDB :: [Hero] -> HeroDB
+toDB heroes = fromList $ entry <$> heroes
+  where entry hero = (heroID hero, hero)
 
 toheroID :: I.HeroIDResponse -> HeroID
 toheroID = HeroID . I.unHeroID

@@ -7,6 +7,9 @@ import           Conferer                       ( defaultConfig
 import qualified Data.Text                     as T
 import           Data.List                      ( intercalate )
 import           Data.Functor.Identity          ( Identity )
+import           Data.Algebra.Free              ( collapse
+                                                , FreeSemiGroup
+                                                )
 
 import           Tryhard.Stats
 import           Tryhard.Stats.Mode
@@ -14,9 +17,7 @@ import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
 import           Tryhard.Engine
-import           Data.Algebra.Free              ( collapse
-                                                , FreeSemiGroup
-                                                )
+import           Tryhard.TUI
 
 
 readHero :: HeroDB -> IO [Hero]
@@ -82,6 +83,23 @@ skipSelf f a b = if a == b then Nothing else Just $ f a b
 
 run :: IO ()
 run = do
+
+  config    <- defaultConfig "tryhard"
+  appConfig <- getFromRootConfig config
+
+  db        <- getHeroes appConfig
+
+  matchup   <- withMatchup appConfig db
+  let legged = withConst $ constHeroDB db (skipSelf numberOfLegs)
+  combos <- withCombo appConfig db
+
+  _      <- start (DataSources db matchup legged combos)
+  putStrLn "Bye"
+
+
+
+cli :: IO ()
+cli = do
   config    <- defaultConfig "tryhard"
   appConfig <- getFromRootConfig config
 

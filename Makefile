@@ -13,9 +13,6 @@ update-deps: ## Update the deps from the package.yaml file
 repl: ## Repl
 	stack ghci
 
-dev: ## Launch the TUI in development mode and watch for file changes
-	ghcid --poll --test=:main
-
 run: ## Run de program in dev mode. Pass arguments in ARGS
 	stack run -- $$ARGS
 

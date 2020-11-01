@@ -33,6 +33,7 @@ dependencies:
 - microlens
 - microlens-th
 - vty
+- vector
 - unordered-containers
 - containers
 - stm

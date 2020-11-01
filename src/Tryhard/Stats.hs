@@ -13,14 +13,14 @@ import           Control.Concurrent.STM         ( modifyTVar
                                                 , newTVarIO
                                                 )
 import           Data.Hashable                  ( Hashable )
+import           Data.Maybe                     ( catMaybes )
 import           Data.Algebra.Free              ( FreeSemiGroup(FreeSemiGroup) )
 
 import           Tryhard.Config
 import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
-
-import           Data.Maybe                     ( catMaybes )
+import           Tryhard.Stats.Mode
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 
@@ -84,3 +84,11 @@ constHeroDB db f = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
   allHeros = findAll db
   forOne hero = (statsFromList $ catMaybes $ dup hero <$> findAll db)
   dup a b = (\c -> (FreeSemiGroup c, b)) <$> (f b a)
+
+-- TODO really need to clean up packages
+data DataSources = DataSources
+  { dataSourceHeroDB :: HeroDB
+  , dataSourceMatchup :: Stats IO (FreeSemiGroup Matchup)
+  , dataSourceNumberOfLegs :: Stats Identity (FreeSemiGroup NumberOfLegs)
+  , dataSourceCombo :: Stats IO Combo
+  }
