@@ -123,6 +123,9 @@ instance Show TeamComp where
 
 data MatchComp = MatchComp { unMatchCompA :: TeamComp, unMatchCompB :: TeamComp } deriving (Eq)
 
+instance Semigroup MatchComp where
+  MatchComp a1 b1 <> MatchComp a2 b2 = MatchComp (a1 <> a2) (b1 <> b2)
+
 instance Hashable MatchComp where
   hashWithSalt salt (MatchComp a b) = salt `hashWithSalt` a `hashWithSalt` b
 
