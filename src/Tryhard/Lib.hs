@@ -45,9 +45,9 @@ choose what choices = go
         go
       Just chosen -> pure chosen
 
-data What = WhatWinPercengate (Stats IO (FreeSemiGroup Matchup))
+data What = WhatWinPercengate (Stats IO (FreeSemiGroup (KeepHero Matchup)))
   | WhatLegs (Stats Identity (FreeSemiGroup NumberOfLegs))
-  | WhatMatches (Stats IO (FreeSemiGroup Matchup))
+  | WhatMatches (Stats IO (FreeSemiGroup (KeepHero Matchup)))
   | WhatCombo (Stats IO Combo)
 
 data How = HowSum | HowMax
@@ -65,13 +65,22 @@ recomendBy how what _ matchcomp = do
     WhatMatches s -> do
       how' <- how
       case how' of
-        HowSum -> foo matchcomp $ (collapse (Sum . numberOfMatches)) <$> s
-        HowMax -> foo matchcomp $ (collapse (Max . numberOfMatches)) <$> s
+        HowSum ->
+          foo matchcomp
+            $   (collapse (Sum . numberOfMatches . unKeepHeroValue))
+            <$> s
+        HowMax ->
+          foo matchcomp
+            $   (collapse (Max . numberOfMatches . unKeepHeroValue))
+            <$> s
     WhatWinPercengate s -> do
       how' <- how
       case how' of
-        HowSum -> foo matchcomp $ (collapse (Sum . WinPercentage)) <$> s
-        HowMax -> foo matchcomp $ (collapse (Max . WinPercentage)) <$> s
+        HowSum ->
+          foo matchcomp
+            $   (collapse (Sum . WinPercentage . unKeepHeroValue))
+            <$> s
+        HowMax -> foo matchcomp $ (collapse (Max . (WinPercentage <$>))) <$> s
  where
   foo :: (Show a, Ord a, ToIO m) => MatchComp -> Stats m (a) -> IO [Result]
   foo c s = do

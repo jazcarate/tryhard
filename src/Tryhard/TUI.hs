@@ -258,7 +258,7 @@ appEvent' cb st ev = do
       then M.continue st'
       else M.suspendAndResume $ do
         _ <- cb $ do
-          let mStats = (collapse (Max . WinPercentage))
+          let mStats = (collapse (Max . (WinPercentage <$>)))
                 <$> dataSourceMatchup (st' ^. dataSources)
           let myTeamComp =
                 foldl (flip with) comp

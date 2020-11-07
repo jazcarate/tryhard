@@ -21,6 +21,7 @@ import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Stats.Mode
+import           Control.Monad                  ( ap )
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 
@@ -46,11 +47,13 @@ cached f = do
 forHeroMatchup :: AppConfig -> HeroDB -> IO (Hero -> IO (StatsResult Matchup))
 forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
 
-withMatchup :: AppConfig -> HeroDB -> IO (Stats IO (FreeSemiGroup Matchup))
+withMatchup
+  :: AppConfig -> HeroDB -> IO (Stats IO (FreeSemiGroup (KeepHero Matchup)))
 withMatchup config heroDB = do
   forOne <- forHeroMatchup config heroDB
   pure $ Stats $ \heroes -> do
-    let statsL = forOne <$> toList heroes
+    let statsL =
+          (\h -> forOne h >>= (\t -> pure $ KeepHero h <$> t)) <$> toList heroes
     statsM <- sequence statsL
     let stats = getCompose $ FreeSemiGroup <$> Compose statsM
     pure $ mconcat stats
@@ -88,7 +91,7 @@ constHeroDB db f = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
 -- TODO really need to clean up packages
 data DataSources = DataSources
   { dataSourceHeroDB :: HeroDB
-  , dataSourceMatchup :: Stats IO (FreeSemiGroup Matchup)
+  , dataSourceMatchup :: Stats IO (FreeSemiGroup (KeepHero Matchup))
   , dataSourceNumberOfLegs :: Stats Identity (FreeSemiGroup NumberOfLegs)
   , dataSourceCombo :: Stats IO Combo
   }

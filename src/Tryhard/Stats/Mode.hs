@@ -109,3 +109,17 @@ notOrd a = case a of
   GT -> LT
 ---------------------------------
 ---------------------------------
+
+data KeepHero a = KeepHero { unKeepHeroHero :: Hero, unKeepHeroValue :: a}
+
+instance Functor KeepHero where
+  fmap f (KeepHero h a) = KeepHero h (f a)
+
+instance Show a => Show (KeepHero a)  where
+  show (KeepHero h a) = show a <> " vs " <> show h
+
+instance Eq a => Eq (KeepHero a) where
+  (==) = (==) `on` unKeepHeroValue
+
+instance Ord a => Ord (KeepHero a) where
+  compare = compare `on` unKeepHeroValue
