@@ -24,6 +24,10 @@ instance Ord WinRate where
   compare (SomeMatches _) NoMatches       = GT
   compare (SomeMatches a) (SomeMatches b) = compare a b
 
+instance Invertable WinPercentage where
+  invert (WinPercentage Matchup { matchupGamesPlayed = played, matchupWins = wins })
+    = WinPercentage $ Matchup played (played - wins)
+
 data WinRate = NoMatches | SomeMatches (Ratio Int) deriving (Eq)
 
 winRate :: Matchup -> WinRate
@@ -123,3 +127,24 @@ instance Eq a => Eq (KeepHero a) where
 
 instance Ord a => Ord (KeepHero a) where
   compare = compare `on` unKeepHeroValue
+
+-- TODO: better name
+data Foo a = Invert a | Id a
+
+instance Functor Foo where
+  fmap f a = case a of
+    Invert a' -> Invert $ f a'
+    Id     a' -> Id $ f a'
+
+instance Invertable a => Invertable (Foo a) where
+  invert a = case a of
+    Invert a' -> Invert $ invert a'
+    Id     _  -> a
+
+ignore :: Foo a -> a
+ignore a = case a of
+  Invert a' -> a'
+  Id     a' -> a'
+
+class Invertable a where
+  invert :: a -> a

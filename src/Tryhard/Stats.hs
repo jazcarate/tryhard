@@ -48,12 +48,15 @@ forHeroMatchup :: AppConfig -> HeroDB -> IO (Hero -> IO (StatsResult Matchup))
 forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
 
 withMatchup
-  :: AppConfig -> HeroDB -> IO (Stats IO (FreeSemiGroup (KeepHero Matchup)))
+  :: AppConfig
+  -> HeroDB
+  -> IO (Stats IO (FreeSemiGroup (KeepHero (Foo Matchup))))
 withMatchup config heroDB = do
   forOne <- forHeroMatchup config heroDB
   pure $ Stats $ \heroes -> do
-    let statsL =
-          (\h -> forOne h >>= (\t -> pure $ KeepHero h <$> t)) <$> toList heroes
+    let keep f h = (\val -> KeepHero h <$> f <$> val) <$> forOne h
+    let (myTeam, enemyTeam) = toTuple heroes
+    let statsL = ((keep Id) <$> myTeam) <> ((keep Invert) <$> enemyTeam)
     statsM <- sequence statsL
     let stats = getCompose $ FreeSemiGroup <$> Compose statsM
     pure $ mconcat stats
@@ -91,7 +94,7 @@ constHeroDB db f = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
 -- TODO really need to clean up packages
 data DataSources = DataSources
   { dataSourceHeroDB :: HeroDB
-  , dataSourceMatchup :: Stats IO (FreeSemiGroup (KeepHero Matchup))
+  , dataSourceMatchup :: Stats IO (FreeSemiGroup (KeepHero (Foo Matchup)))
   , dataSourceNumberOfLegs :: Stats Identity (FreeSemiGroup NumberOfLegs)
   , dataSourceCombo :: Stats IO Combo
   }

@@ -43,7 +43,9 @@ import           Tryhard.OpenDota.HeroDB        ( findAll
 import           Debug.Trace
 import           Control.Monad                  ( void )
 import           Data.Algebra.Free              ( collapse )
-import           Tryhard.Stats.Mode             ( WinPercentage(WinPercentage)
+import           Tryhard.Stats.Mode             ( invert
+                                                , ignore
+                                                , WinPercentage(WinPercentage)
                                                 , Max(Max)
                                                 , KeepHero(KeepHero)
                                                 )
@@ -258,7 +260,13 @@ appEvent' cb st ev = do
       then M.continue st'
       else M.suspendAndResume $ do
         _ <- cb $ do
-          let mStats = (collapse (Max . (WinPercentage <$>)))
+          let
+            mStats =
+              (collapse
+                  ( Max
+                  . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t)
+                  )
+                )
                 <$> dataSourceMatchup (st' ^. dataSources)
           let myTeamComp =
                 foldl (flip with) comp

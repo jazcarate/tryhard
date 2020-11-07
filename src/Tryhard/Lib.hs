@@ -18,6 +18,9 @@ import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
 import           Tryhard.Engine
 import           Tryhard.TUI
+import           Data.Functor.Compose           ( getCompose
+                                                , Compose(Compose)
+                                                )
 
 
 readHero :: HeroDB -> IO [Hero]
@@ -45,9 +48,9 @@ choose what choices = go
         go
       Just chosen -> pure chosen
 
-data What = WhatWinPercengate (Stats IO (FreeSemiGroup (KeepHero Matchup)))
+data What = WhatWinPercengate (Stats IO (FreeSemiGroup (KeepHero (Foo Matchup))))
   | WhatLegs (Stats Identity (FreeSemiGroup NumberOfLegs))
-  | WhatMatches (Stats IO (FreeSemiGroup (KeepHero Matchup)))
+  | WhatMatches (Stats IO (FreeSemiGroup (KeepHero (Foo Matchup))))
   | WhatCombo (Stats IO Combo)
 
 data How = HowSum | HowMax
@@ -67,20 +70,27 @@ recomendBy how what _ matchcomp = do
       case how' of
         HowSum ->
           foo matchcomp
-            $   (collapse (Sum . numberOfMatches . unKeepHeroValue))
+            $   (collapse (Sum . numberOfMatches . ignore . unKeepHeroValue))
             <$> s
         HowMax ->
           foo matchcomp
-            $   (collapse (Max . numberOfMatches . unKeepHeroValue))
+            $   (collapse (Max . (numberOfMatches . ignore <$>)))
             <$> s
     WhatWinPercengate s -> do
       how' <- how
       case how' of
         HowSum ->
           foo matchcomp
-            $   (collapse (Sum . WinPercentage . unKeepHeroValue))
+            $   (collapse (Sum . WinPercentage . ignore . unKeepHeroValue))
             <$> s
-        HowMax -> foo matchcomp $ (collapse (Max . (WinPercentage <$>))) <$> s
+        HowMax ->
+          foo matchcomp
+            $   (collapse
+                  ( Max
+                  . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t)
+                  )
+                )
+            <$> s
  where
   foo :: (Show a, Ord a, ToIO m) => MatchComp -> Stats m (a) -> IO [Result]
   foo c s = do
