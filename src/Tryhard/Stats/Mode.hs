@@ -18,8 +18,6 @@ instance Eq WinPercentage where
 instance Ord WinPercentage where
   compare = compare `on` (winRate . unWinPercentageMatchup)
 
-newtype KeepHero a = KeepHero { unKeepHero :: a }
-
 instance Ord WinRate where
   compare NoMatches       NoMatches       = EQ
   compare NoMatches       (SomeMatches _) = LT

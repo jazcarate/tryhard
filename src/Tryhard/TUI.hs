@@ -45,11 +45,14 @@ import           Control.Monad                  ( void )
 import           Data.Algebra.Free              ( collapse )
 import           Tryhard.Stats.Mode             ( WinPercentage(WinPercentage)
                                                 , Max(Max)
+                                                , KeepHero(KeepHero)
                                                 )
 import           Tryhard.Engine                 ( resultHero
                                                 , Result
                                                 , recomend
                                                 )
+
+import qualified Data.Function                 as F
 
 heroNameOmni :: [Hero] -> Text -> [Hero]
 heroNameOmni db query =
@@ -145,7 +148,7 @@ drawUI st = [popup, context]
     (focusBorder focus)
       $ B.borderWithLabel (txt "Recomendation")
       $ case (st ^. statsState) of
-          Loading    -> txt "Loading..."
+          Loading    -> txt "Loading..." <+> fill ' '
           NotFetched -> txt "Add heroes to see the recomendations" <+> fill ' '
           Loaded     -> L.renderListWithIndex
             (\i _ recomened ->
@@ -172,16 +175,18 @@ focusBorder focus = if focus
 
 teamsUI :: Bool -> TeamsState -> T.Widget Name
 teamsUI focus st = vBox
-  [ F.withFocusRing (st ^. teamFocus) (teamUI "Your team") (st ^. myTeam)
-  , F.withFocusRing (st ^. teamFocus) (teamUI "Enemy team") (st ^. enemyTeam)
-  , F.withFocusRing (st ^. teamFocus) (teamUI "Bans") (st ^. bans)
+  [ F.withFocusRing (st ^. teamFocus) (teamUI "Your team" focus) (st ^. myTeam)
+  , F.withFocusRing (st ^. teamFocus)
+                    (teamUI "Enemy team" focus)
+                    (st ^. enemyTeam)
+  , F.withFocusRing (st ^. teamFocus) (teamUI "Bans" focus) (st ^. bans)
   ]
 
-teamUI :: Text -> Bool -> L.List Name Hero -> T.Widget Name
-teamUI label focus st =
+teamUI :: Text -> Bool -> Bool -> L.List Name Hero -> T.Widget Name
+teamUI label outsideFocus focus st =
   (focusBorder focus) . B.borderWithLabel (txt label) $ L.renderListWithIndex
     (\i _ heroW -> txt $ (Tx.pack $ show (i + 1)) <> ". " <> (heroName heroW))
-    focus
+    (focus && outsideFocus)
     st
 
 handleHeroPopupEvent
@@ -235,80 +240,102 @@ listRemoveSeelected l = case L.listSelectedElement l of
 
 data StatsEvent = NewStats [Result] deriving (Show)
 
-appEvent
+shouldFetch :: State -> State -> Bool
+shouldFetch a b = (cmp myTeam) a b || (cmp enemyTeam) a b
+ where
+  cmp getter = (/=) `F.on` (L.listElements . (\st -> st ^. teams . getter))
+
+appEvent'
   :: Callback StatsEvent
   -> State
   -> T.BrickEvent Name StatsEvent
   -> T.EventM Name (T.Next State)
-appEvent cb st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
+appEvent' cb st ev = do
+  continuationSt <- appEvent st ev
+  case continuationSt of
+    Halt st' -> M.halt st'
+    Next st' -> if not $ shouldFetch st st'
+      then M.continue st'
+      else M.suspendAndResume $ do
+        _ <- cb $ do
+          let mStats = (collapse (Max . WinPercentage))
+                <$> dataSourceMatchup (st' ^. dataSources)
+          let myTeamComp =
+                foldl (flip with) comp
+                  $   heroTC
+                  <$> (L.listElements (st' ^. teams . myTeam))
+          let enemyTeamComp =
+                foldl (flip against) comp
+                  $   heroTC
+                  <$> (L.listElements (st' ^. teams . enemyTeam))
+          x <- runStats mStats (myTeamComp <> enemyTeamComp)
+          let recomendatios = recomend x
+          pure (NewStats recomendatios)
+        pure $ st' & (statsState .~ Loading)
+
+
+
+data Continuation a = Next a | Halt a
+
+continue :: a -> T.EventM Name (Continuation a)
+continue = pure . Next
+
+halt :: a -> T.EventM Name (Continuation a)
+halt = pure . Halt
+
+appEvent
+  :: State -> T.BrickEvent Name StatsEvent -> T.EventM Name (Continuation State)
+appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
   True -> case ev of -- Popup
-    V.EvKey V.KEsc [] -> M.continue $ st & heroPopupState %~ showPopup .~ False
-    V.EvKey V.KEnter [] -> M.suspendAndResume $ do
-      let st' =
-            st
-              & (case
-                    ( F.focusGetCurrent (st ^. teams . teamFocus)
-                    , selectedHero (st ^. heroPopupState . choices)
-                    )
-                  of -- TODO: Duplicated of the handleListEvent when the popup is closed 
-                    (Just MyTeamN, Just h) ->
-                      teams . myTeam %~ listAddAndFocus h
-                    (Just EnemyTeamN, Just h) ->
-                      teams . enemyTeam %~ listAddAndFocus h
-                    (Just BansN, Just h) -> teams . bans %~ listAddAndFocus h
-                    _                    -> id
-                )
-              & (heroPopupState %~ showPopup .~ False)
-              & (statsState .~ Loading)
-      _ <- cb $ do -- TODO handle this on comp change (move this out and wrap the eventHandler with it)
-        let mStats = (collapse (Max . WinPercentage))
-              <$> dataSourceMatchup (st' ^. dataSources)
-        let myTeamComp =
-              foldl (flip with) comp
-                $   heroTC
-                <$> (L.listElements (st' ^. teams . myTeam))
-        let enemyTeamComp =
-              foldl (flip against) comp
-                $   heroTC
-                <$> (L.listElements (st' ^. teams . enemyTeam))
-        x <- runStats mStats (myTeamComp <> enemyTeamComp)
-        let recomendatios = recomend x
-        pure (NewStats recomendatios)
-      pure st'
+    V.EvKey V.KEsc [] -> continue $ st & heroPopupState %~ showPopup .~ False
+    V.EvKey V.KEnter [] ->
+      continue
+        $ st
+        & (case
+              ( F.focusGetCurrent (st ^. teams . teamFocus)
+              , selectedHero (st ^. heroPopupState . choices)
+              )
+            of -- TODO: Duplicated of the handleListEvent when the popup is closed 
+              (Just MyTeamN, Just h) -> teams . myTeam %~ listAddAndFocus h
+              (Just EnemyTeamN, Just h) ->
+                teams . enemyTeam %~ listAddAndFocus h
+              (Just BansN, Just h) -> teams . bans %~ listAddAndFocus h
+              _                    -> id
+          )
+        & (heroPopupState %~ showPopup .~ False)
     _ ->
-      M.continue
-        =<< T.handleEventLensed st heroPopupState handleHeroPopupEvent ev
+      continue =<< T.handleEventLensed st heroPopupState handleHeroPopupEvent ev
   False -> case (F.focusGetCurrent (st ^. panel), ev) of
-    (_, V.EvKey V.KEsc []) -> M.halt st
+    (_, V.EvKey V.KEsc []) -> halt st
 
     (_, V.EvKey V.KLeft [V.MShift]) ->
-      M.continue $ st & panel %~ F.focusSetCurrent TeamsPanel
+      continue $ st & panel %~ F.focusSetCurrent TeamsPanel
     (_, V.EvKey V.KRight [V.MShift]) ->
-      M.continue $ st & panel %~ F.focusSetCurrent RecomendationPanel
+      continue $ st & panel %~ F.focusSetCurrent RecomendationPanel
     (_, V.EvKey V.KDown [V.MShift]) ->
-      M.continue $ st & teams . teamFocus %~ F.focusNext
+      continue $ st & teams . teamFocus %~ F.focusNext
     (_, V.EvKey V.KUp [V.MShift]) ->
-      M.continue $ st & teams . teamFocus %~ F.focusPrev
+      continue $ st & teams . teamFocus %~ F.focusPrev
 
     (Just TeamsPanel, _) -> case ev of
-      V.EvKey V.KEnter [] -> M.continue
+      V.EvKey V.KEnter [] -> continue
         ( st
         & (heroPopupState . showPopup .~ True)
         . (heroPopupState .~ initialPopupState (st ^. dataSources))
         )
       V.EvKey V.KDel [] ->
-        M.continue $ case F.focusGetCurrent (st ^. teams . teamFocus) of -- TODO: sort of duplicated from popup closing
+        continue $ case F.focusGetCurrent (st ^. teams . teamFocus) of -- TODO: sort of duplicated from popup closing
           Just MyTeamN    -> st & teams . myTeam %~ listRemoveSeelected
           Just EnemyTeamN -> st & teams . enemyTeam %~ listRemoveSeelected
           Just BansN      -> st & teams . bans %~ listRemoveSeelected
           _               -> st
       V.EvKey V.KDel [V.MShift] ->
-        M.continue
+        continue
           $ st
           & (teams . myTeam %~ L.listClear)
           & (teams . enemyTeam %~ L.listClear)
           & (teams . bans %~ L.listClear)
-      _ -> M.continue =<< case F.focusGetCurrent (st ^. teams . teamFocus) of
+      _ -> continue =<< case F.focusGetCurrent (st ^. teams . teamFocus) of
         Just MyTeamN ->
           T.handleEventLensed st (teams . myTeam) L.handleListEvent ev
         Just EnemyTeamN ->
@@ -318,7 +345,7 @@ appEvent cb st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
         _ -> pure st
     (Just RecomendationPanel, _) -> case (st ^. statsState, ev) of
       (Loaded, V.EvKey V.KEnter []) ->
-        M.continue
+        continue
           $ st
           & (case
                 ( F.focusGetCurrent (st ^. teams . teamFocus)
@@ -333,16 +360,16 @@ appEvent cb st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
             )
           & (heroPopupState %~ showPopup .~ False)
       (Loaded, _) ->
-        M.continue =<< T.handleEventLensed st stats L.handleListEvent ev
-      _ -> M.continue st
-    _ -> M.continue st
-appEvent _ st (T.AppEvent ev) = case ev of
+        continue =<< T.handleEventLensed st stats L.handleListEvent ev
+      _ -> continue st
+    _ -> continue st
+appEvent st (T.AppEvent ev) = case ev of
   NewStats newStats ->
-    M.continue
+    continue
       $ st
       & (statsState .~ Loaded)
       & (stats %~ L.listReplace (fromList newStats) Nothing)
-appEvent _ st _ = M.continue st
+appEvent st _ = continue st
 
 initialPopupState :: DataSources -> HeroPopupState
 initialPopupState ds = HeroPopupState False
@@ -374,7 +401,7 @@ theMap = A.attrMap
   V.defAttr
   [ (E.editAttr               , V.white `on` V.blue)
   , (E.editFocusedAttr        , V.black `on` V.yellow)
-  , (L.listSelectedFocusedAttr, V.blue `on` V.white)
+  , (L.listSelectedFocusedAttr, V.blue `on` V.black)
   , (popupAttr                , V.white `on` V.yellow)
   , (bannedAttr               , V.withStyle mempty VA.italic)
   ]
@@ -387,7 +414,7 @@ type Callback a = (IO a -> IO ())
 theApp :: Callback StatsEvent -> M.App State StatsEvent Name
 theApp cb = M.App { M.appDraw         = drawUI
                   , M.appChooseCursor = appCursor
-                  , M.appHandleEvent  = appEvent cb
+                  , M.appHandleEvent  = appEvent' cb
                   , M.appStartEvent   = return
                   , M.appAttrMap      = const theMap
                   }
