@@ -3,7 +3,6 @@
 
 module Tryhard.TUI where
 
-
 import           Lens.Micro                     ( (.~)
                                                 , (%~)
                                                 , (&)
@@ -29,9 +28,7 @@ import           Brick.Util                     ( on )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Tx
 import qualified Text.Fuzzy                    as Fuzzy
-import           Data.Vector                    ( Vector
-                                                , fromList
-                                                )
+import qualified Data.Vector                   as Vec
 import qualified Control.Concurrent            as Co
 
 import           Tryhard.Types
@@ -43,7 +40,8 @@ import           Tryhard.OpenDota.HeroDB        ( findAll
 import           Debug.Trace
 import           Control.Monad                  ( void )
 import           Data.Algebra.Free              ( collapse )
-import           Tryhard.Stats.Mode             ( invert
+import           Tryhard.Stats.Mode             ( Sum(Sum)
+                                                , invert
                                                 , ignore
                                                 , WinPercentage(WinPercentage)
                                                 , Max(Max)
@@ -134,6 +132,37 @@ help = hBox $ toW <$> content
     , ("^DEL" , "Clear all heroes")
     ]
 
+-- TODO: It's not bounded, but coudn't come up with a better name
+renderListWithIndexBounded
+  :: (Ord n, Show n)
+  => (Int -> Bool -> a -> T.Widget n)
+  -> Bool
+  -> L.List n a
+  -> T.Widget n
+renderListWithIndexBounded drawElem foc l =
+  topHelper <=> L.renderListWithIndex drawElem foc l <=> bottomHelper
+ where
+  threshold = 3
+  elements  = Vec.indexed $ L.listElements l
+  items     = length elements
+  selectedI = maybe 0 id $ L.listSelected l
+  drawElem' (i, e) = drawElem i False e
+
+  topHelper = if selectedI > threshold
+    then
+      (vBox $ Vec.toList $ drawElem' <$> Vec.take threshold elements)
+        <=> B.hBorder
+    else emptyWidget
+  bottomHelper = if selectedI < items - threshold
+    then
+      B.hBorder
+        <=> (   vBox
+            $   Vec.toList
+            $   drawElem'
+            <$> Vec.drop (items - threshold) elements
+            )
+    else emptyWidget
+
 drawUI :: State -> [T.Widget Name]
 drawUI st = [popup, context]
  where
@@ -152,7 +181,7 @@ drawUI st = [popup, context]
       $ case (st ^. statsState) of
           Loading    -> txt "Loading..." <+> fill ' '
           NotFetched -> txt "Add heroes to see the recomendations" <+> fill ' '
-          Loaded     -> L.renderListWithIndex
+          Loaded     -> renderListWithIndexBounded
             (\i _ recomened ->
               (if baned (resultHero recomened) then withAttr bannedAttr else id)
                 $  txt
@@ -214,8 +243,8 @@ heroList :: HeroDB -> Text -> L.List Name Hero
 heroList db search = L.list HeroSelection (filterHeroes (findAll db) search) 1
 
 
-filterHeroes :: [Hero] -> Text -> Vector Hero
-filterHeroes db search = fromList $ Fuzzy.original <$> found
+filterHeroes :: [Hero] -> Text -> Vec.Vector Hero
+filterHeroes db search = Vec.fromList $ Fuzzy.original <$> found
  where
   found :: [Fuzzy.Fuzzy Hero Text]
   found = Fuzzy.filter search db mempty mempty heroName False
@@ -260,14 +289,8 @@ appEvent' cb st ev = do
       then M.continue st'
       else M.suspendAndResume $ do
         _ <- cb $ do
-          let
-            mStats =
-              (collapse
-                  ( Max
-                  . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t)
-                  )
-                )
-                <$> dataSourceMatchup (st' ^. dataSources)
+          let mStats =
+                collapse Sum <$> dataSourceNumberOfLegs (st' ^. dataSources)
           let myTeamComp =
                 foldl (flip with) comp
                   $   heroTC
@@ -276,7 +299,7 @@ appEvent' cb st ev = do
                 foldl (flip against) comp
                   $   heroTC
                   <$> (L.listElements (st' ^. teams . enemyTeam))
-          x <- runStats mStats (myTeamComp <> enemyTeamComp)
+          x <- lift $ runStats mStats (myTeamComp <> enemyTeamComp)
           let recomendatios = recomend x
           pure (NewStats recomendatios)
         pure $ st' & (statsState .~ Loading)
@@ -376,7 +399,7 @@ appEvent st (T.AppEvent ev) = case ev of
     continue
       $ st
       & (statsState .~ Loaded)
-      & (stats %~ L.listReplace (fromList newStats) Nothing)
+      & (stats %~ L.listReplace (Vec.fromList newStats) Nothing)
 appEvent st _ = continue st
 
 initialPopupState :: DataSources -> HeroPopupState
