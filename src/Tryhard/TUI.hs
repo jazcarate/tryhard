@@ -39,7 +39,9 @@ import           Tryhard.OpenDota.HeroDB        ( findAll
 
 import           Control.Monad                  ( void )
 import           Data.Algebra.Free              ( collapse )
-import           Tryhard.Stats.Mode             ( WinPercentage(WinPercentage)
+import           Tryhard.Stats.Mode             ( numberOfMatches
+                                                , unKeepHeroValue
+                                                , WinPercentage(WinPercentage)
                                                 , invert
                                                 , ignore
                                                 , Max(Max)
@@ -49,9 +51,10 @@ import           Tryhard.Engine                 ( resultHero
                                                 , Result
                                                 , recomend
                                                 )
-
+import           Data.Char                      ( chr
+                                                , ord
+                                                )
 import qualified Data.Function                 as F
-import           Debug.Trace
 
 heroNameOmni :: [Hero] -> Text -> [Hero]
 heroNameOmni db query =
@@ -59,7 +62,7 @@ heroNameOmni db query =
 
 data Event = Event
 
-data Strategy = MaxWinPercentage | TeamLegged deriving (Eq, Enum, Bounded)
+data Strategy =  TeamCombos | AllCombos | NumberOfMatches | AverageWinPercentage | MaxWinPercentage | TeamLegged deriving (Eq, Enum, Bounded)
 
 data State = State
   { _dataSources ::  DataSources
@@ -123,16 +126,20 @@ heroPopup st = case st ^. showPopup of
   results =
     L.renderList (\_ heroW -> txt $ heroName heroW) True (st ^. choices)
 
-help :: T.Widget n
-help = hBox $ toW <$> content
+help :: State -> T.Widget n
+help st = hBox $ toW <$> (content <> stateAware)
  where
-  toW (graph, text) = txt graph <+> txt text
+  toW (graph, text) = txt graph <+> txt ". " <+> txtWrap text
   content =
     [ ("^↑/^↓", "Move though teams and bans")
-    , ("⤶"    , "Add a hero")
-    , ("DEL"  , "Remove a hero")
-    , ("^DEL" , "Clear all heroes")
+    , ("^←/^→", "Move though panels")
+    , ("a-f"  , "Change strategy")
+    , ("^DEL" , "Reset")
     ]
+  stateAware = case F.focusGetCurrent (st ^. panel) of
+    Just TeamsPanel         -> [("⤶", "Add a hero"), ("DEL", "Remove a hero")]
+    Just RecomendationPanel -> [("⤶", "Add selected hero")]
+    _                       -> mempty
 
 -- TODO: It's not bounded, but coudn't come up with a better name
 renderListWithIndexBounded
@@ -170,7 +177,7 @@ drawUI st = [popup, context]
  where
   popup = heroPopup (st ^. heroPopupState)
   context =
-    vBox [vLimit 1 $ C.center $ str "Tryhard", selecction, vLimit 1 $ help]
+    vBox [vLimit 1 $ C.center $ str "Tryhard", selecction, vLimit 1 $ help st]
 
   selecction = hBox
     [ F.withFocusRing (st ^. panel) teamsUI (st ^. teams)
@@ -185,10 +192,12 @@ focusBorder focus = if focus
 
 strategyUI :: (Ord n, Show n) => Bool -> L.List n Strategy -> T.Widget n
 strategyUI focus ls =
-  (focusBorder focus) $ B.borderWithLabel (txt "strategies") $ L.renderList
-    (\_ t -> strategyHelp t)
-    focus
-    ls
+  (focusBorder focus)
+    $ B.borderWithLabel (txt "strategies")
+    $ L.renderListWithIndex
+        (\i _ t -> str ([chr (ord 'a' + i)]) <+> txt ". " <+> strategyHelp t)
+        focus
+        ls
 
 recomendationsUI
   :: (Ord n, Show n) => State -> Bool -> L.List n Result -> T.Widget n
@@ -287,9 +296,8 @@ toComp t = (foldTC with myTeam) <> (foldTC against enemyTeam)
 
 shouldFetch :: State -> State -> Bool
 shouldFetch a b =
-  (cmp myTeam) a b
-    || (cmp enemyTeam) a b
-    || (cmpStrat a b && mempty /= toComp (b ^. teams))
+  (mempty /= toComp (b ^. teams))
+    && ((cmp myTeam) a b || (cmp enemyTeam) a b || (cmpStrat a b))
  where
   cmp getter = (/=) `F.on` (L.listElements . (\st -> st ^. teams . getter))
   cmpStrat = (/=) `F.on` (L.listSelectedElement . (\st -> st ^. strategies))
@@ -311,7 +319,10 @@ appEvent' cb st ev = do
                 $ L.listSelectedElement (st' ^. strategies)
           recomendatios <- stats (st' ^. dataSources) strategy (st' ^. teams)
           pure (NewStats recomendatios)
-        pure $ st' & (recomendationsState .~ Loading)
+        pure
+          $ st'
+          & (recomendationsState .~ Loading)
+          & (recomendations %~ L.listClear)
 
 stats :: DataSources -> Strategy -> TeamsState -> IO [Result]
 stats ds s teamState = case s of
@@ -322,6 +333,18 @@ stats ds s teamState = case s of
     (   (collapse
           (Max . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t))
         )
+    <$> dataSourceMatchup ds
+    )
+  AverageWinPercentage -> run
+    matchComp
+    (   (collapse (Sum . WinPercentage . ignore . unKeepHeroValue))
+    <$> dataSourceMatchup ds
+    )
+  TeamCombos      -> run (myTeamComp matchComp) (ByWith <$> dataSourceCombo ds)
+  AllCombos       -> run matchComp (ByWith <$> dataSourceCombo ds)
+  NumberOfMatches -> run
+    matchComp
+    (   (collapse (Sum . numberOfMatches . ignore . unKeepHeroValue))
     <$> dataSourceMatchup ds
     )
  where
@@ -369,12 +392,16 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
     (_, V.EvKey V.KUp [V.MShift]) ->
       continue $ st & teams . teamFocus %~ F.focusPrev
 
+    (_, V.EvKey (V.KChar c) []) ->
+      continue $ st & strategies %~ L.listMoveTo (ord c - ord 'a')
+
     (_, V.EvKey V.KDel [V.MShift]) ->
       continue
         $ st
         & (teams . myTeam %~ L.listClear)
         & (teams . enemyTeam %~ L.listClear)
         & (teams . bans %~ L.listClear)
+        & (recomendations %~ L.listClear)
 
     (Just TeamsPanel, _) -> case ev of
       V.EvKey V.KEnter [] -> continue
@@ -457,8 +484,12 @@ initialState ds = State
 
 strategyHelp :: Strategy -> T.Widget n
 strategyHelp st = case st of
-  MaxWinPercentage -> txt "Max win percentage"
-  TeamLegged       -> txt "your team legs"
+  MaxWinPercentage     -> txt "Max win percentage"
+  AverageWinPercentage -> txt "Average win percentage"
+  TeamLegged           -> txt "your team legs"
+  TeamCombos           -> txt "Combos of your team"
+  AllCombos            -> txt "Combos al full composition"
+  NumberOfMatches      -> txt "number of matches"
 
 innitialStrategies :: Vec.Vector Strategy
 innitialStrategies = Vec.fromList [(minBound :: Strategy) ..]
@@ -468,6 +499,7 @@ theMap = A.attrMap
   V.defAttr
   [ (E.editAttr               , V.white `on` V.blue)
   , (E.editFocusedAttr        , V.black `on` V.yellow)
+  , (L.listSelectedAttr       , V.blue `on` V.yellow)
   , (L.listSelectedFocusedAttr, V.blue `on` V.black)
   , (popupAttr                , V.white `on` V.yellow)
   , (bannedAttr               , V.withStyle mempty VA.italic)
