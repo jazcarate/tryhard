@@ -126,28 +126,30 @@ data MatchComp = MatchComp { unMatchCompA :: TeamComp, unMatchCompB :: TeamComp 
 instance Semigroup MatchComp where
   MatchComp a1 b1 <> MatchComp a2 b2 = MatchComp (a1 <> a2) (b1 <> b2)
 
+instance Monoid MatchComp where
+  mempty = MatchComp mempty mempty
+
 instance Hashable MatchComp where
   hashWithSalt salt (MatchComp a b) = salt `hashWithSalt` a `hashWithSalt` b
 
 newtype MyTeam = MyTeam { unMyTeam :: MatchComp }
 newtype EnemyTeam = EnemyTeam { unEnemyTeam :: MatchComp }
 
-instance Listable MyTeam where
-  toTuple (MyTeam (MatchComp a _)) = (toListComp a, mempty)
+myTeamComp :: MatchComp -> MatchComp
+myTeamComp (MatchComp a _) = MatchComp a mempty
 
-instance Listable EnemyTeam where
-  toTuple (EnemyTeam (MatchComp _ b)) = (mempty, toListComp b)
+
+enemyTeamCopm :: MatchComp -> MatchComp
+enemyTeamCopm (MatchComp _ b) = MatchComp mempty b
 
 toListComp :: TeamComp -> [Hero]
 toListComp (TeamComp s) = S.toList s
 
-instance Listable MatchComp where
-  toTuple (MatchComp a b) = (toListComp a, toListComp b)
+toTuple :: MatchComp -> ([Hero], [Hero])
+toTuple (MatchComp a b) = (toListComp a, toListComp b)
 
-class Listable a where
-  toTuple :: a -> ([Hero], [Hero])
-  toList :: a -> [Hero]
-  toList a = uncurry (<>) $ toTuple a
+toList :: MatchComp -> [Hero]
+toList a = uncurry (<>) $ toTuple a
 
 instance Show MatchComp where
   show MatchComp { unMatchCompA = a, unMatchCompB = b } =

@@ -18,9 +18,6 @@ import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Types
 import           Tryhard.Engine
 import           Tryhard.TUI
-import           Data.Functor.Compose           ( getCompose
-                                                , Compose(Compose)
-                                                )
 
 
 readHero :: HeroDB -> IO [Hero]
@@ -37,12 +34,12 @@ readHero db = go []
         maybe (go acc) (\h -> go (h : acc)) $ db `byNameLike` str
 
 choose :: String -> [(String, a)] -> IO a
-choose what choices = go
+choose what haystack = go
  where
   go = do
-    putStrLn $ what <> ": " <> intercalate "," (fst <$> choices)
+    putStrLn $ what <> ": " <> intercalate "," (fst <$> haystack)
     line <- getLine
-    case lookup line choices of -- TODO more inteligente lookup. Numbered? Default first?
+    case lookup line haystack of -- TODO more inteligente lookup. Numbered? Default first?
       Nothing -> do
         putStrLn $ "Coudn't find that " <> what <> ". Try again."
         go

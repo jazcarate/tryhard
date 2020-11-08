@@ -21,7 +21,6 @@ import           Tryhard.Types
 import           Tryhard.OpenDota
 import           Tryhard.OpenDota.HeroDB
 import           Tryhard.Stats.Mode
-import           Control.Monad                  ( ap )
 
 type UnderlyingMatchupMatrix = HM.HashMap Hero (StatsResult Matchup)
 

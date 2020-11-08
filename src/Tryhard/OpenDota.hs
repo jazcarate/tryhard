@@ -87,12 +87,12 @@ toCombo :: HeroDB -> I.HeroComboResponse -> [(Combo, Hero)]
 toCombo db (I.HeroComboResponse { I.heroComboResponseTeamA = teamA, I.heroComboResponseTeamB = teamB })
   = maybe [] id go
  where
-  toHero :: I.HeroIDResponse -> Maybe Hero
-  toHero x = db `byHeroId` (toheroID x)
+  toHero' :: I.HeroIDResponse -> Maybe Hero
+  toHero' x = db `byHeroId` (toheroID x)
   go :: Maybe [(Combo, Hero)]
   go = do
     let twoOf = TwoOf teamA teamB
-    x <- superSequence $ getCompose $ toHero <$> Compose twoOf
+    x <- superSequence $ getCompose $ toHero' <$> Compose twoOf
     let (teamA', teamB') = tuple x
     let teams            = (teamA', teamB')
     let (entriesMyTeam, entriesEnemyTeam) =

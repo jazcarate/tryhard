@@ -37,15 +37,13 @@ import           Tryhard.OpenDota.HeroDB        ( findAll
                                                 , HeroDB
                                                 )
 
-import           Debug.Trace
 import           Control.Monad                  ( void )
 import           Data.Algebra.Free              ( collapse )
-import           Tryhard.Stats.Mode             ( Sum(Sum)
+import           Tryhard.Stats.Mode             ( WinPercentage(WinPercentage)
                                                 , invert
                                                 , ignore
-                                                , WinPercentage(WinPercentage)
                                                 , Max(Max)
-                                                , KeepHero(KeepHero)
+                                                , Sum(Sum)
                                                 )
 import           Tryhard.Engine                 ( resultHero
                                                 , Result
@@ -53,6 +51,7 @@ import           Tryhard.Engine                 ( resultHero
                                                 )
 
 import qualified Data.Function                 as F
+import           Debug.Trace
 
 heroNameOmni :: [Hero] -> Text -> [Hero]
 heroNameOmni db query =
@@ -60,16 +59,19 @@ heroNameOmni db query =
 
 data Event = Event
 
+data Strategy = MaxWinPercentage | TeamLegged deriving (Eq, Enum, Bounded)
+
 data State = State
   { _dataSources ::  DataSources
   , _heroPopupState :: HeroPopupState
   , _teams :: TeamsState
-  , _stats :: L.List Name Result
-  , _statsState :: StatsState
+  , _recomendations :: L.List Name Result
+  , _recomendationsState :: StatsState --TODO merge _recomendationsState and _recomendations
+  , _strategies :: L.List Name Strategy
   , _panel :: F.FocusRing Name
   }
 
-data Name = HeroInput | HeroSelection | MyTeamN | EnemyTeamN | BansN | TeamsPanel | RecomendationPanel deriving (Ord, Show, Eq)
+data Name = HeroInput | HeroSelection | MyTeamN | EnemyTeamN | BansN | TeamsPanel | RecomendationPanel | StrategyPanel deriving (Ord, Show, Eq)
 data StatsState = NotFetched | Loading | Loaded
 
 data HeroPopupState = HeroPopupState
@@ -172,37 +174,43 @@ drawUI st = [popup, context]
 
   selecction = hBox
     [ F.withFocusRing (st ^. panel) teamsUI (st ^. teams)
-    , F.withFocusRing (st ^. panel) recomendations (st ^. stats)
-    , panel' "strategy" (str "foo")
+    , F.withFocusRing (st ^. panel) (recomendationsUI st) (st ^. recomendations)
+    , F.withFocusRing (st ^. panel) strategyUI (st ^. strategies)
     ]
-  recomendations focus ls =
-    (focusBorder focus)
-      $ B.borderWithLabel (txt "Recomendation")
-      $ case (st ^. statsState) of
-          Loading    -> txt "Loading..." <+> fill ' '
-          NotFetched -> txt "Add heroes to see the recomendations" <+> fill ' '
-          Loaded     -> renderListWithIndexBounded
-            (\i _ recomened ->
-              (if baned (resultHero recomened) then withAttr bannedAttr else id)
-                $  txt
-                $  Tx.pack
-                $  show (i + 1)
-                <> ". "
-                <> (if baned (resultHero recomened) then "(banned) " else mempty
-                   )
-                <> (show recomened)
-            )
-            focus
-            ls
-  baned hero = hero `elem` L.listElements (st ^. teams . bans)
-  panel' name inner =
-    withBorderStyle BS.defaultBorderStyle $ B.borderWithLabel (str name) $ vBox
-      [hBox [inner, fill ' '], fill ' ']
 
 focusBorder :: Bool -> T.Widget n -> T.Widget n
 focusBorder focus = if focus
   then withBorderStyle BS.unicodeBold
   else withBorderStyle BS.defaultBorderStyle
+
+strategyUI :: (Ord n, Show n) => Bool -> L.List n Strategy -> T.Widget n
+strategyUI focus ls =
+  (focusBorder focus) $ B.borderWithLabel (txt "strategies") $ L.renderList
+    (\_ t -> strategyHelp t)
+    focus
+    ls
+
+recomendationsUI
+  :: (Ord n, Show n) => State -> Bool -> L.List n Result -> T.Widget n
+recomendationsUI st focus ls =
+  (focusBorder focus)
+    $ B.borderWithLabel (txt "Recomendation")
+    $ case (st ^. recomendationsState) of
+        Loading    -> txt "Loading..." <+> fill ' '
+        NotFetched -> txt "Add heroes to see the recomendations" <+> fill ' '
+        Loaded     -> renderListWithIndexBounded
+          (\i _ recomened ->
+            (if baned (resultHero recomened) then withAttr bannedAttr else id)
+              $  txt
+              $  Tx.pack
+              $  show (i + 1)
+              <> ". "
+              <> (if baned (resultHero recomened) then "(banned) " else mempty)
+              <> (show recomened)
+          )
+          focus
+          ls
+  where baned hero = hero `elem` L.listElements (st ^. teams . bans)
 
 teamsUI :: Bool -> TeamsState -> T.Widget Name
 teamsUI focus st = vBox
@@ -271,10 +279,20 @@ listRemoveSeelected l = case L.listSelectedElement l of
 
 data StatsEvent = NewStats [Result] deriving (Show)
 
+toComp :: TeamsState -> MatchComp
+toComp t = (foldTC with myTeam) <> (foldTC against enemyTeam)
+ where
+  foldTC teamF ls =
+    foldl (flip teamF) comp $ heroTC <$> (L.listElements (t ^. ls))
+
 shouldFetch :: State -> State -> Bool
-shouldFetch a b = (cmp myTeam) a b || (cmp enemyTeam) a b
+shouldFetch a b =
+  (cmp myTeam) a b
+    || (cmp enemyTeam) a b
+    || (cmpStrat a b && mempty /= toComp (b ^. teams))
  where
   cmp getter = (/=) `F.on` (L.listElements . (\st -> st ^. teams . getter))
+  cmpStrat = (/=) `F.on` (L.listSelectedElement . (\st -> st ^. strategies))
 
 appEvent'
   :: Callback StatsEvent
@@ -289,22 +307,27 @@ appEvent' cb st ev = do
       then M.continue st'
       else M.suspendAndResume $ do
         _ <- cb $ do
-          let mStats =
-                collapse Sum <$> dataSourceNumberOfLegs (st' ^. dataSources)
-          let myTeamComp =
-                foldl (flip with) comp
-                  $   heroTC
-                  <$> (L.listElements (st' ^. teams . myTeam))
-          let enemyTeamComp =
-                foldl (flip against) comp
-                  $   heroTC
-                  <$> (L.listElements (st' ^. teams . enemyTeam))
-          x <- lift $ runStats mStats (myTeamComp <> enemyTeamComp)
-          let recomendatios = recomend x
+          let strategy = maybe MaxWinPercentage snd
+                $ L.listSelectedElement (st' ^. strategies)
+          recomendatios <- stats (st' ^. dataSources) strategy (st' ^. teams)
           pure (NewStats recomendatios)
-        pure $ st' & (statsState .~ Loading)
+        pure $ st' & (recomendationsState .~ Loading)
 
-
+stats :: DataSources -> Strategy -> TeamsState -> IO [Result]
+stats ds s teamState = case s of
+  TeamLegged ->
+    run (myTeamComp matchComp) (collapse Sum <$> dataSourceNumberOfLegs ds)
+  MaxWinPercentage -> run
+    matchComp
+    (   (collapse
+          (Max . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t))
+        )
+    <$> dataSourceMatchup ds
+    )
+ where
+  matchComp = toComp teamState
+  run :: (ToIO m, Ord res, Show res) => MatchComp -> Stats m res -> IO [Result]
+  run who what = (lift $ runStats what who) >>= (pure . recomend)
 
 data Continuation a = Next a | Halt a
 
@@ -337,12 +360,10 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
     _ ->
       continue =<< T.handleEventLensed st heroPopupState handleHeroPopupEvent ev
   False -> case (F.focusGetCurrent (st ^. panel), ev) of
-    (_, V.EvKey V.KEsc []) -> halt st
+    (_, V.EvKey V.KEsc []          ) -> halt st
 
-    (_, V.EvKey V.KLeft [V.MShift]) ->
-      continue $ st & panel %~ F.focusSetCurrent TeamsPanel
-    (_, V.EvKey V.KRight [V.MShift]) ->
-      continue $ st & panel %~ F.focusSetCurrent RecomendationPanel
+    (_, V.EvKey V.KRight [V.MShift]) -> continue $ st & panel %~ F.focusNext
+    (_, V.EvKey V.KLeft [V.MShift] ) -> continue $ st & panel %~ F.focusPrev
     (_, V.EvKey V.KDown [V.MShift]) ->
       continue $ st & teams . teamFocus %~ F.focusNext
     (_, V.EvKey V.KUp [V.MShift]) ->
@@ -375,13 +396,13 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
         Just BansN ->
           T.handleEventLensed st (teams . enemyTeam) L.handleListEvent ev
         _ -> pure st
-    (Just RecomendationPanel, _) -> case (st ^. statsState, ev) of
+    (Just RecomendationPanel, _) -> case (st ^. recomendationsState, ev) of
       (Loaded, V.EvKey V.KEnter []) ->
         continue
           $ st
           & (case
                 ( F.focusGetCurrent (st ^. teams . teamFocus)
-                , selectedHero (resultHero <$> st ^. stats)
+                , selectedHero (resultHero <$> st ^. recomendations)
                 )
               of -- TODO: Duplicated of the handleListEvent when the popup is closed 
                 (Just MyTeamN, Just h) -> teams . myTeam %~ listAddAndFocus h
@@ -392,15 +413,17 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
             )
           & (heroPopupState %~ showPopup .~ False)
       (Loaded, _) ->
-        continue =<< T.handleEventLensed st stats L.handleListEvent ev
+        continue =<< T.handleEventLensed st recomendations L.handleListEvent ev
       _ -> continue st
+    (Just StrategyPanel, _) -> case ev of
+      _ -> continue =<< T.handleEventLensed st strategies L.handleListEvent ev
     _ -> continue st
 appEvent st (T.AppEvent ev) = case ev of
   NewStats newStats ->
     continue
       $ st
-      & (statsState .~ Loaded)
-      & (stats %~ L.listReplace (Vec.fromList newStats) Nothing)
+      & (recomendationsState .~ Loaded)
+      & (recomendations %~ L.listReplace (Vec.fromList newStats) Nothing)
 appEvent st _ = continue st
 
 initialPopupState :: DataSources -> HeroPopupState
@@ -421,12 +444,24 @@ innitialStatsState :: StatsState
 innitialStatsState = NotFetched
 
 initialState :: DataSources -> State
-initialState ds = State ds
-                        (initialPopupState ds)
-                        innitialTeamsState
-                        (L.list RecomendationPanel mempty 1)
-                        innitialStatsState
-                        (F.focusRing [TeamsPanel, RecomendationPanel])
+initialState ds = State
+  { _dataSources         = ds
+  , _heroPopupState      = (initialPopupState ds)
+  , _teams               = innitialTeamsState
+  , _strategies          = (L.list StrategyPanel innitialStrategies 1)
+  , _recomendations      = (L.list RecomendationPanel mempty 1)
+  , _recomendationsState = innitialStatsState
+  , _panel = (F.focusRing [TeamsPanel, RecomendationPanel, StrategyPanel])
+  }
+
+
+strategyHelp :: Strategy -> T.Widget n
+strategyHelp st = case st of
+  MaxWinPercentage -> txt "Max win percentage"
+  TeamLegged       -> txt "your team legs"
+
+innitialStrategies :: Vec.Vector Strategy
+innitialStrategies = Vec.fromList [(minBound :: Strategy) ..]
 
 theMap :: A.AttrMap
 theMap = A.attrMap
