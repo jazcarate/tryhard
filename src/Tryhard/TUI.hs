@@ -348,6 +348,13 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
     (_, V.EvKey V.KUp [V.MShift]) ->
       continue $ st & teams . teamFocus %~ F.focusPrev
 
+    (_, V.EvKey V.KDel [V.MShift]) ->
+      continue
+        $ st
+        & (teams . myTeam %~ L.listClear)
+        & (teams . enemyTeam %~ L.listClear)
+        & (teams . bans %~ L.listClear)
+
     (Just TeamsPanel, _) -> case ev of
       V.EvKey V.KEnter [] -> continue
         ( st
@@ -360,12 +367,6 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
           Just EnemyTeamN -> st & teams . enemyTeam %~ listRemoveSeelected
           Just BansN      -> st & teams . bans %~ listRemoveSeelected
           _               -> st
-      V.EvKey V.KDel [V.MShift] ->
-        continue
-          $ st
-          & (teams . myTeam %~ L.listClear)
-          & (teams . enemyTeam %~ L.listClear)
-          & (teams . bans %~ L.listClear)
       _ -> continue =<< case F.focusGetCurrent (st ^. teams . teamFocus) of
         Just MyTeamN ->
           T.handleEventLensed st (teams . myTeam) L.handleListEvent ev
