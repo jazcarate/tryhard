@@ -30,6 +30,7 @@ import qualified Data.Text                     as Tx
 import qualified Text.Fuzzy                    as Fuzzy
 import qualified Data.Vector                   as Vec
 import qualified Control.Concurrent            as Co
+import qualified Tryhard.TUI.Popup             as P
 
 import           Tryhard.Types
 import           Tryhard.Stats
@@ -66,7 +67,8 @@ data Strategy =  TeamCombos | AllCombos | NumberOfMatches | AverageWinPercentage
 
 data State = State
   { _dataSources ::  DataSources
-  , _heroPopupState :: HeroPopupState
+  , _heroSelect :: P.Popup HeroSelectState
+  , _help :: P.Popup ()
   , _teams :: TeamsState
   , _recomendations :: L.List Name Result
   , _recomendationsState :: StatsState --TODO merge _recomendationsState and _recomendations
@@ -77,9 +79,8 @@ data State = State
 data Name = HeroInput | HeroSelection | MyTeamN | EnemyTeamN | BansN | TeamsPanel | RecomendationPanel | StrategyPanel deriving (Ord, Show, Eq)
 data StatsState = NotFetched | Loading | Loaded
 
-data HeroPopupState = HeroPopupState
-  { _showPopup :: Bool -- TODO move this to the State and use a sum-type
-  , _input :: E.Editor Text Name
+data HeroSelectState = HeroSelectState
+  { _input :: E.Editor Text Name
   , _choices :: L.List Name Hero
   , _popupDB :: HeroDB
   }
@@ -92,7 +93,7 @@ data TeamsState = TeamsState -- TOdo one widget. Too many duplicated lines
   }
 
 makeLenses ''State
-makeLenses ''HeroPopupState
+makeLenses ''HeroSelectState
 makeLenses ''TeamsState
 
 instance (Named TeamsState Name) where
@@ -104,16 +105,25 @@ popupAttr = "popup"
 bannedAttr :: A.AttrName
 bannedAttr = "banned"
 
+-- | Help popup
+helpPopup :: () -> T.Widget Name
+helpPopup _ =
+  C.centerLayer
+    $   withDefAttr popupAttr
+    $   withBorderStyle BS.unicodeBold
+    $   B.borderWithLabel (str "Help")
+    $   vBox
+    $   C.center
+    <$> [txt "TODO help"]
+
 -- | hero choosing popup
-heroPopup :: HeroPopupState -> T.Widget Name
-heroPopup st = case st ^. showPopup of
-  False -> emptyWidget
-  True ->
-    C.centerLayer
-      $ withDefAttr popupAttr
-      $ withBorderStyle BS.defaultBorderStyle
-      $ B.borderWithLabel (str "Choose a hero")
-      $ vBox [editor, results]
+heroPopup :: HeroSelectState -> T.Widget Name
+heroPopup st =
+  C.centerLayer
+    $ withDefAttr popupAttr
+    $ withBorderStyle BS.defaultBorderStyle
+    $ B.borderWithLabel (str "Choose a hero")
+    $ vBox [editor, results]
  where
   editor =
     (   str "Hero: "
@@ -126,12 +136,13 @@ heroPopup st = case st ^. showPopup of
   results =
     L.renderList (\_ heroW -> txt $ heroName heroW) True (st ^. choices)
 
-help :: State -> T.Widget n
-help st = hBox $ toW <$> (content <> stateAware)
+status :: State -> T.Widget n
+status st = hBox $ toW <$> (content <> stateAware)
  where
   toW (graph, text) = txt graph <+> txt ". " <+> txtWrap text
   content =
-    [ ("^↑/^↓", "Move though teams and bans")
+    [ ("^h"   , "Help")
+    , ("^↑/^↓", "Move though teams and bans")
     , ("^←/^→", "Move though panels")
     , ("a-f"  , "Change strategy")
     , ("^DEL" , "Reset")
@@ -141,7 +152,7 @@ help st = hBox $ toW <$> (content <> stateAware)
     Just RecomendationPanel -> [("⤶", "Add selected hero")]
     _                       -> mempty
 
--- TODO: It's not bounded, but coudn't come up with a better name
+-- TODO: It's not bounded, but coudn't come up with a better name. "peek"?
 renderListWithIndexBounded
   :: (Ord n, Show n)
   => (Int -> Bool -> a -> T.Widget n)
@@ -173,11 +184,14 @@ renderListWithIndexBounded drawElem foc l =
     else emptyWidget
 
 drawUI :: State -> [T.Widget Name]
-drawUI st = [popup, context]
+drawUI st =
+  [ P.withPopup emptyWidget helpPopup (st ^. help)
+  , P.withPopup emptyWidget heroPopup (st ^. heroSelect)
+  , context
+  ]
  where
-  popup = heroPopup (st ^. heroPopupState)
   context =
-    vBox [vLimit 1 $ C.center $ str "Tryhard", selecction, vLimit 1 $ help st]
+    vBox [vLimit 1 $ C.center $ str "Tryhard", selecction, vLimit 1 $ status st]
 
   selecction = hBox
     [ F.withFocusRing (st ^. panel) teamsUI (st ^. teams)
@@ -193,7 +207,7 @@ focusBorder focus = if focus
 strategyUI :: (Ord n, Show n) => Bool -> L.List n Strategy -> T.Widget n
 strategyUI focus ls =
   (focusBorder focus)
-    $ B.borderWithLabel (txt "strategies")
+    $ B.borderWithLabel (txt "S1trategies")
     $ L.renderListWithIndex
         (\i _ t -> str ([chr (ord 'a' + i)]) <+> txt ". " <+> strategyHelp t)
         focus
@@ -238,7 +252,7 @@ teamUI label outsideFocus focus st =
     st
 
 handleHeroPopupEvent
-  :: V.Event -> HeroPopupState -> T.EventM Name HeroPopupState
+  :: V.Event -> HeroSelectState -> T.EventM Name HeroSelectState
 handleHeroPopupEvent ev st =
   T.handleEventLensed st choices L.handleListEvent ev
     >>= (\st' -> T.handleEventLensed st' input E.handleEditorEvent ev)
@@ -246,12 +260,12 @@ handleHeroPopupEvent ev st =
 
 
  where
-  conditionalModifyHeroList :: HeroPopupState -> T.EventM Name HeroPopupState
+  conditionalModifyHeroList :: HeroSelectState -> T.EventM Name HeroSelectState
   conditionalModifyHeroList st' =
     if E.getEditContents (st ^. input) == E.getEditContents (st' ^. input)
       then pure st'
       else modifyHeroList st'
-  modifyHeroList :: HeroPopupState -> T.EventM Name HeroPopupState
+  modifyHeroList :: HeroSelectState -> T.EventM Name HeroSelectState
   modifyHeroList st' = pure $ st' & choices .~ heroList
     (st ^. popupDB)
     (Tx.unwords $ E.getEditContents $ st ^. input)
@@ -362,15 +376,15 @@ halt = pure . Halt
 
 appEvent
   :: State -> T.BrickEvent Name StatsEvent -> T.EventM Name (Continuation State)
-appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
+appEvent st (T.VtyEvent ev) = case st ^. heroSelect . P.shown of
   True -> case ev of -- Popup
-    V.EvKey V.KEsc [] -> continue $ st & heroPopupState %~ showPopup .~ False
+    V.EvKey V.KEsc [] -> continue $ st & heroSelect %~ P.hide
     V.EvKey V.KEnter [] ->
       continue
         $ st
         & (case
               ( F.focusGetCurrent (st ^. teams . teamFocus)
-              , selectedHero (st ^. heroPopupState . choices)
+              , selectedHero (st ^. heroSelect . P.inner . choices)
               )
             of -- TODO: Duplicated of the handleListEvent when the popup is closed 
               (Just MyTeamN, Just h) -> teams . myTeam %~ listAddAndFocus h
@@ -379,12 +393,18 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
               (Just BansN, Just h) -> teams . bans %~ listAddAndFocus h
               _                    -> id
           )
-        & (heroPopupState %~ showPopup .~ False)
+        & (heroSelect %~ P.hide)
     _ ->
-      continue =<< T.handleEventLensed st heroPopupState handleHeroPopupEvent ev
+      continue
+        =<< T.handleEventLensed st
+                                (heroSelect . P.inner)
+                                handleHeroPopupEvent
+                                ev
   False -> case (F.focusGetCurrent (st ^. panel), ev) of
     (_, V.EvKey V.KEsc []          ) -> halt st
 
+
+    (_, V.EvKey (V.KChar 'H') []   ) -> continue $ st & help %~ P.toggle
     (_, V.EvKey V.KRight [V.MShift]) -> continue $ st & panel %~ F.focusNext
     (_, V.EvKey V.KLeft [V.MShift] ) -> continue $ st & panel %~ F.focusPrev
     (_, V.EvKey V.KDown [V.MShift]) ->
@@ -393,7 +413,10 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
       continue $ st & teams . teamFocus %~ F.focusPrev
 
     (_, V.EvKey (V.KChar c) []) ->
-      continue $ st & strategies %~ L.listMoveTo (ord c - ord 'a')
+      if i > 0 && i < (length $ L.listElements $ st ^. strategies)
+        then continue $ st & strategies %~ L.listMoveTo i
+        else continue st
+      where i = (ord c - ord 'a')
 
     (_, V.EvKey V.KDel [V.MShift]) ->
       continue
@@ -406,8 +429,8 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
     (Just TeamsPanel, _) -> case ev of
       V.EvKey V.KEnter [] -> continue
         ( st
-        & (heroPopupState . showPopup .~ True)
-        . (heroPopupState .~ initialPopupState (st ^. dataSources))
+        & (heroSelect %~ P.show)
+        . (heroSelect .~ P.popup (initialPopupState (st ^. dataSources)))
         )
       V.EvKey V.KDel [] ->
         continue $ case F.focusGetCurrent (st ^. teams . teamFocus) of -- TODO: sort of duplicated from popup closing
@@ -438,7 +461,7 @@ appEvent st (T.VtyEvent ev) = case st ^. heroPopupState . showPopup of
                 (Just BansN, Just h) -> teams . bans %~ listAddAndFocus h
                 _                    -> id
             )
-          & (heroPopupState %~ showPopup .~ False)
+          & (heroSelect %~ P.show)
       (Loaded, _) ->
         continue =<< T.handleEventLensed st recomendations L.handleListEvent ev
       _ -> continue st
@@ -453,11 +476,10 @@ appEvent st (T.AppEvent ev) = case ev of
       & (recomendations %~ L.listReplace (Vec.fromList newStats) Nothing)
 appEvent st _ = continue st
 
-initialPopupState :: DataSources -> HeroPopupState
-initialPopupState ds = HeroPopupState False
-                                      (E.editor HeroInput (Just 1) "")
-                                      (heroList db Tx.empty)
-                                      db
+initialPopupState :: DataSources -> HeroSelectState
+initialPopupState ds = HeroSelectState (E.editor HeroInput (Just 1) "")
+                                       (heroList db Tx.empty)
+                                       db
   where db = dataSourceHeroDB ds
 
 innitialTeamsState :: TeamsState
@@ -473,7 +495,8 @@ innitialStatsState = NotFetched
 initialState :: DataSources -> State
 initialState ds = State
   { _dataSources         = ds
-  , _heroPopupState      = (initialPopupState ds)
+  , _heroSelect          = P.popup (initialPopupState ds)
+  , _help                = P.popup ()
   , _teams               = innitialTeamsState
   , _strategies          = (L.list StrategyPanel innitialStrategies 1)
   , _recomendations      = (L.list RecomendationPanel mempty 1)
