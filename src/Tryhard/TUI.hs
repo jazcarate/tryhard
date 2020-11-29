@@ -56,6 +56,7 @@ import           Data.Char                      ( chr
                                                 , ord
                                                 )
 import qualified Data.Function                 as F
+import           Data.List                      ( sort )
 
 heroNameOmni :: [Hero] -> Text -> [Hero]
 heroNameOmni db query =
@@ -265,6 +266,7 @@ handleHeroPopupEvent ev st =
     if E.getEditContents (st ^. input) == E.getEditContents (st' ^. input)
       then pure st'
       else modifyHeroList st'
+
   modifyHeroList :: HeroSelectState -> T.EventM Name HeroSelectState
   modifyHeroList st' = pure $ st' & choices .~ heroList
     (st ^. popupDB)
@@ -275,7 +277,7 @@ heroList db search = L.list HeroSelection (filterHeroes (findAll db) search) 1
 
 
 filterHeroes :: [Hero] -> Text -> Vec.Vector Hero
-filterHeroes db search = Vec.fromList $ Fuzzy.original <$> found
+filterHeroes db search = Vec.fromList $ sort $ Fuzzy.original <$> found
  where
   found :: [Fuzzy.Fuzzy Hero Text]
   found = Fuzzy.filter search db mempty mempty heroName False
