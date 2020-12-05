@@ -12,3 +12,8 @@ collapse :: (Semigroup b) => (a -> b) -> FreeSemiGroup a -> b
 collapse f fsm = case fsm of
   FreeSemiGroup a          -> f a
   FreeSemiGroupWith a fsm' -> f a <> (collapse f fsm')
+
+inspect :: FreeSemiGroup a -> [a]
+inspect fsm = case fsm of
+  FreeSemiGroup a          -> [a]
+  FreeSemiGroupWith a fsm' -> a : inspect fsm'

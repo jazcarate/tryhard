@@ -1,9 +1,7 @@
 {
-    "name": "tryhard",
-    "dockerFile": "../Dockerfile",
-    "runArgs": [ "--tty", "--attach" ],
-
-    "extensions": [
+	"name": "tryhard",
+	"dockerFile": "../Dockerfile",
+	"extensions": [
 		"justusadam.language-haskell",
 		"digitalassetholdingsllc.ghcide",
 		"maxgabriel.brittany",

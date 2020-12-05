@@ -12,8 +12,6 @@ I have this repo setup with a [`.devcontainer` for VSCode](https://code.visualst
 In order to get you up and running, be sure to have `GHC` (check the `.devcontainer/Dockerfile` for the version) and `stack`.
 Most used commands are written and documented in the `Makefile`, so you can run and peruse `make help`.
 
-Some high level documentation of workings and where to find what can be found in the `DEVELOPMENT.md`.
-
 ### Basic usage
 Run the tests and watch file changes. 
 ```bash

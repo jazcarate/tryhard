@@ -5,7 +5,7 @@ import           Data.Text                      ( Text )
 import qualified Text.Fuzzy                    as Fuzzy
 import           Data.Maybe                     ( listToMaybe )
 
-import           Tryhard.Types
+import           Tryhard.Hero
 
 newtype HeroDB = HeroDB { unHeroDB :: HM.HashMap HeroID Hero }
 

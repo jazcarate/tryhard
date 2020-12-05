@@ -2,7 +2,8 @@ module Test.Fixture where
 
 import           Data.Text                      ( Text )
 
-import           Tryhard.Types
+import           Tryhard.Hero
+import           Tryhard.Stats.Matchup
 
 hero :: Text -> Int -> Int -> Hero
 hero name id' legs =

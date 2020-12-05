@@ -5,22 +5,90 @@ import           Conferer                       ( defaultConfig
                                                 )
 
 import qualified Data.Text                     as T
-import           Data.List                      ( intercalate )
 import           Data.Functor.Identity          ( Identity )
-import           Data.Algebra.Free              ( collapse
-                                                , FreeSemiGroup
+import           Data.Algebra.Free              ( FreeSemiGroup )
+import           Control.Concurrent.STM         ( modifyTVar
+                                                , atomically
+                                                , readTVarIO
+                                                , newTVarIO
+                                                )
+import           Data.Hashable                  ( Hashable )
+import           Data.Maybe                     ( catMaybes )
+import           Data.Algebra.Free              ( FreeSemiGroup(FreeSemiGroup) )
+import qualified Data.HashMap.Strict           as HM
+
+import           Tryhard.Config
+import           Tryhard.Types
+import           Tryhard.OpenDota
+import qualified Tryhard.OpenDota.HeroDB       as DB
+
+import           Tryhard.Hero
+import qualified Tryhard.Picks                 as P
+import           Tryhard.Stats
+import           Tryhard.Stats.Result
+import           Tryhard.Stats.Matchup
+import           Tryhard.Stats.NumberOfLegs
+import           Tryhard.Stats.Combo
+import           Tryhard.Stats.Types
+import           Tryhard.TUI
+import           Data.Functor.Compose           ( getCompose
+                                                , Compose(Compose)
                                                 )
 
-import           Tryhard.Stats
-import           Tryhard.Stats.Mode
-import           Tryhard.OpenDota
-import           Tryhard.OpenDota.HeroDB
-import           Tryhard.Types
-import           Tryhard.Engine
-import           Tryhard.TUI
+type UnderlyingMatchupMatrix = HM.HashMap Hero (Result Matchup)
 
+cached :: (Hashable a, Eq a) => (a -> IO res) -> IO (a -> IO res)
+cached f = do
+  cacheT <- newTVarIO HM.empty
+  pure $ \what -> do
+    cache <- readTVarIO $ cacheT
+    let val = HM.lookup what cache
+    case val of
+      Just x  -> pure x
+      Nothing -> do
+        response <- f what
+        _        <- atomically $ modifyTVar cacheT (HM.insert what response)
+        pure response
 
-readHero :: HeroDB -> IO [Hero]
+forHeroMatchup :: AppConfig -> DB.HeroDB -> IO (Hero -> IO (Result Matchup))
+forHeroMatchup config heroDB = cached $ getHeroMatchup config heroDB
+
+withMatchup
+  :: AppConfig
+  -> DB.HeroDB
+  -> IO (Stats IO (FreeSemiGroup (ShouldInvert Matchup)))
+withMatchup config heroDB = do
+  forOne <- forHeroMatchup config heroDB
+  pure $ Stats $ \heroes -> do
+    let keep f h = (f <$>) <$> forOne h
+    let (allies, enemies) = P.teams heroes
+    let statsL = ((keep DontInvert) <$> allies) <> ((keep Invert) <$> enemies)
+    statsM <- sequence statsL
+    let stats' = getCompose $ FreeSemiGroup <$> Compose statsM
+    pure $ mconcat stats'
+
+withCombo :: AppConfig -> DB.HeroDB -> IO (Stats IO Combo)
+withCombo config heroDB = do
+  forOne <- cached $ getHeroCombo config heroDB
+  pure $ Stats forOne
+
+withConst :: (Semigroup a) => HM.HashMap Hero (Result a) -> Stats Identity a
+withConst matrix = Stats
+  $ \heroes -> pure $ mconcat $ forOne <$> P.teamsList heroes
+  where forOne hero = maybe mempty id $ HM.lookup hero matrix
+
+-- Maybe this shouldb e a lazy map?, as we are AxA each hero
+constHeroDB
+  :: DB.HeroDB
+  -> (Hero -> Hero -> Maybe a)
+  -> HM.HashMap Hero (Result (FreeSemiGroup a))
+constHeroDB db f = HM.fromList $ (\h -> (h, forOne h)) <$> allHeros
+ where
+  allHeros = DB.findAll db
+  forOne hero = (fromList $ catMaybes $ dup hero <$> DB.findAll db)
+  dup a b = (\c -> (FreeSemiGroup c, b)) <$> (f b a)
+
+readHero :: DB.HeroDB -> IO [Hero]
 readHero db = go []
  where
   go :: [Hero] -> IO [Hero]
@@ -31,68 +99,7 @@ readHero db = go []
     case line of
       ""  -> pure acc
       str -> do
-        maybe (go acc) (\h -> go (h : acc)) $ db `byNameLike` str
-
-choose :: String -> [(String, a)] -> IO a
-choose what haystack = go
- where
-  go = do
-    putStrLn $ what <> ": " <> intercalate "," (fst <$> haystack)
-    line <- getLine
-    case lookup line haystack of -- TODO more inteligente lookup. Numbered? Default first?
-      Nothing -> do
-        putStrLn $ "Coudn't find that " <> what <> ". Try again."
-        go
-      Just chosen -> pure chosen
-
-data What = WhatWinPercengate (Stats IO (FreeSemiGroup (KeepHero (Foo Matchup))))
-  | WhatLegs (Stats Identity (FreeSemiGroup NumberOfLegs))
-  | WhatMatches (Stats IO (FreeSemiGroup (KeepHero (Foo Matchup))))
-  | WhatCombo (Stats IO Combo)
-
-data How = HowSum | HowMax
-
-data LookAt = LookAtAll | LookAtMyTeam | LookAtEnemyTeam
-
--- TODO yuc!
--- TODO LookAt!
-recomendBy :: IO How -> IO What -> IO LookAt -> MatchComp -> IO [Result]
-recomendBy how what _ matchcomp = do
-  what' <- what
-  case what' of
-    WhatCombo   s -> foo matchcomp $ ByWith <$> s
-    WhatLegs    s -> foo matchcomp $ collapse Sum <$> s
-    WhatMatches s -> do
-      how' <- how
-      case how' of
-        HowSum ->
-          foo matchcomp
-            $   (collapse (Sum . numberOfMatches . ignore . unKeepHeroValue))
-            <$> s
-        HowMax ->
-          foo matchcomp
-            $   (collapse (Max . (numberOfMatches . ignore <$>)))
-            <$> s
-    WhatWinPercengate s -> do
-      how' <- how
-      case how' of
-        HowSum ->
-          foo matchcomp
-            $   (collapse (Sum . WinPercentage . ignore . unKeepHeroValue))
-            <$> s
-        HowMax ->
-          foo matchcomp
-            $   (collapse
-                  ( Max
-                  . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t)
-                  )
-                )
-            <$> s
- where
-  foo :: (Show a, Ord a, ToIO m) => MatchComp -> Stats m (a) -> IO [Result]
-  foo c s = do
-    x <- lift $ runStats s c
-    pure $ recomend x
+        maybe (go acc) (\h -> go (h : acc)) $ db `DB.byNameLike` str
 
 skipSelf :: (Hero -> Hero -> a) -> Hero -> Hero -> Maybe a
 skipSelf f a b = if a == b then Nothing else Just $ f a b
@@ -111,44 +118,3 @@ run = do
 
   _      <- start (DataSources db matchup legged combos)
   putStrLn "Bye"
-
-
-
-cli :: IO ()
-cli = do
-  config    <- defaultConfig "tryhard"
-  appConfig <- getFromRootConfig config
-
-  db        <- getHeroes appConfig
-
-  matchup   <- withMatchup appConfig db
-  let legged = withConst $ constHeroDB db (skipSelf numberOfLegs)
-  combos <- withCombo appConfig db
-
-  let what = choose
-        "what"
-        [ ("matches", WhatMatches $ matchup)
-        , ("wins"   , WhatWinPercengate $ matchup)
-        , ("legs"   , WhatLegs $ legged)
-        , ("combos" , WhatCombo $ combos)
-        ]
-
-  let how = choose "how" [("sum", HowSum), ("max", HowMax)]
-
-  let lookAt = choose
-        "looking at"
-        [ ("everyone"  , LookAtAll)
-        , ("my team"   , LookAtMyTeam)
-        , ("enemy team", LookAtEnemyTeam)
-        ]
-
-  go db how what lookAt
- where
-  go db how what lookAt = do
-    heroes <- readHero db
-    let composition = foldl (flip with) comp $ heroTC <$> heroes
-    putStrLn $ "Recomendarion for " <> show composition
-
-    resp <- recomendBy how what lookAt composition
-    putStrLn $ show resp
-    go db how what lookAt

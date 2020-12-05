@@ -39,24 +39,19 @@ import           Tryhard.OpenDota.HeroDB        ( findAll
                                                 )
 
 import           Control.Monad                  ( void )
-import           Data.Algebra.Free              ( collapse )
-import           Tryhard.Stats.Mode             ( numberOfMatches
-                                                , unKeepHeroValue
-                                                , WinPercentage(WinPercentage)
-                                                , invert
-                                                , ignore
-                                                , Max(Max)
-                                                , Sum(Sum)
-                                                )
-import           Tryhard.Engine                 ( resultHero
-                                                , Result
-                                                , recomend
-                                                )
+import           Tryhard.Hero
+import qualified Tryhard.Picks                 as TP
 import           Data.Char                      ( chr
                                                 , ord
                                                 )
 import qualified Data.Function                 as F
 import           Data.List                      ( sort )
+import           Data.Algebra.Free              ( collapse )
+import           Tryhard.Stats.Combine
+import           Tryhard.Stats.Result
+import           Tryhard.Stats.Matchup.WinPercentage
+import           Tryhard.Stats.Types            ( extract )
+import           Tryhard.Stats.Matchup.NumberOfMatches
 
 heroNameOmni :: [Hero] -> Text -> [Hero]
 heroNameOmni db query =
@@ -64,14 +59,24 @@ heroNameOmni db query =
 
 data Event = Event
 
-data Strategy =  TeamCombos | AllCombos | NumberOfMatches | AverageWinPercentage | MaxWinPercentage | TeamLegged deriving (Eq, Enum, Bounded)
+data Strategy =  TeamCombos | AllCombos | NumberOfMatchesS | AverageWinPercentage | MaxWinPercentage | TeamLegged deriving (Eq, Enum, Bounded)
+
+data HeroValue = HeroValue
+  { heroValueH :: Hero
+  , heroValueV :: String
+  }
+
+instance Show HeroValue where
+  show HeroValue { heroValueH = hero, heroValueV = value } =
+    show hero <> " - " <> value
+
 
 data State = State
   { _dataSources ::  DataSources
   , _heroSelect :: P.Popup HeroSelectState
   , _help :: P.Popup ()
   , _teams :: TeamsState
-  , _recomendations :: L.List Name Result
+  , _recomendations :: L.List Name HeroValue
   , _recomendationsState :: StatsState --TODO merge _recomendationsState and _recomendations
   , _strategies :: L.List Name Strategy
   , _panel :: F.FocusRing Name
@@ -197,7 +202,8 @@ drawUI st =
   selecction = hBox
     [ F.withFocusRing (st ^. panel) teamsUI (st ^. teams)
     , F.withFocusRing (st ^. panel) (recomendationsUI st) (st ^. recomendations)
-    , F.withFocusRing (st ^. panel) strategyUI (st ^. strategies)
+    , vBox
+      [infoUI st, F.withFocusRing (st ^. panel) strategyUI (st ^. strategies)]
     ]
 
 focusBorder :: Bool -> T.Widget n -> T.Widget n
@@ -208,14 +214,20 @@ focusBorder focus = if focus
 strategyUI :: (Ord n, Show n) => Bool -> L.List n Strategy -> T.Widget n
 strategyUI focus ls =
   (focusBorder focus)
-    $ B.borderWithLabel (txt "S1trategies")
+    $ B.borderWithLabel (txt "Strategies")
     $ L.renderListWithIndex
         (\i _ t -> str ([chr (ord 'a' + i)]) <+> txt ". " <+> strategyHelp t)
         focus
         ls
 
+infoUI :: State -> T.Widget n
+infoUI _ =
+  B.borderWithLabel (txt "Info")
+    $   vBox [txt "uno", txt "dos", txt "tres"]
+    <+> fill ' '
+
 recomendationsUI
-  :: (Ord n, Show n) => State -> Bool -> L.List n Result -> T.Widget n
+  :: (Ord n, Show n) => State -> Bool -> L.List n HeroValue -> T.Widget n
 recomendationsUI st focus ls =
   (focusBorder focus)
     $ B.borderWithLabel (txt "Recomendation")
@@ -224,12 +236,12 @@ recomendationsUI st focus ls =
         NotFetched -> txt "Add heroes to see the recomendations" <+> fill ' '
         Loaded     -> renderListWithIndexBounded
           (\i _ recomened ->
-            (if baned (resultHero recomened) then withAttr bannedAttr else id)
+            (if baned (heroValueH recomened) then withAttr bannedAttr else id)
               $  txt
               $  Tx.pack
               $  show (i + 1)
               <> ". "
-              <> (if baned (resultHero recomened) then "(banned) " else mempty)
+              <> (if baned (heroValueH recomened) then "(banned) " else mempty)
               <> (show recomened)
           )
           focus
@@ -302,13 +314,12 @@ listRemoveSeelected l = case L.listSelectedElement l of
   Nothing     -> l
   Just (i, _) -> L.listRemove i l
 
-data StatsEvent = NewStats [Result] deriving (Show)
+data StatsEvent = NewStats [HeroValue] deriving (Show)
 
-toComp :: TeamsState -> MatchComp
-toComp t = (foldTC with myTeam) <> (foldTC against enemyTeam)
+toComp :: TeamsState -> TP.Picks
+toComp t = (foldTC TP.friendly myTeam) <> (foldTC TP.enemy enemyTeam)
  where
-  foldTC teamF ls =
-    foldl (flip teamF) comp $ heroTC <$> (L.listElements (t ^. ls))
+  foldTC teamF ls = foldl (<>) mempty $ teamF <$> (L.listElements (t ^. ls))
 
 shouldFetch :: State -> State -> Bool
 shouldFetch a b =
@@ -340,33 +351,27 @@ appEvent' cb st ev = do
           & (recomendationsState .~ Loading)
           & (recomendations %~ L.listClear)
 
-stats :: DataSources -> Strategy -> TeamsState -> IO [Result]
+stats :: DataSources -> Strategy -> TeamsState -> IO [HeroValue]
 stats ds s teamState = case s of
-  TeamLegged ->
-    run (myTeamComp matchComp) (collapse Sum <$> dataSourceNumberOfLegs ds)
+  TeamLegged       -> run matchComp $ collapse Sum <$> dataSourceNumberOfLegs ds
   MaxWinPercentage -> run
     matchComp
-    (   (collapse
-          (Max . (\t -> (\x -> ignore $ invert $ WinPercentage <$> x) <$> t))
-        )
-    <$> dataSourceMatchup ds
-    )
+    ((collapse (Max . extract . (WinPercentage <$>))) <$> dataSourceMatchup ds)
   AverageWinPercentage -> run
     matchComp
-    (   (collapse (Sum . WinPercentage . ignore . unKeepHeroValue))
-    <$> dataSourceMatchup ds
-    )
-  TeamCombos      -> run (myTeamComp matchComp) (ByWith <$> dataSourceCombo ds)
-  AllCombos       -> run matchComp (ByWith <$> dataSourceCombo ds)
-  NumberOfMatches -> run
+    ((collapse (Sum . extract . (WinPercentage <$>))) <$> dataSourceMatchup ds)
+  TeamCombos       -> run matchComp $ dataSourceCombo ds
+  AllCombos        -> run matchComp $ dataSourceCombo ds -- TODO change "look at"
+  NumberOfMatchesS -> run
     matchComp
-    (   (collapse (Sum . numberOfMatches . ignore . unKeepHeroValue))
-    <$> dataSourceMatchup ds
+    ((collapse (Sum . extract . (numberOfMatches <$>))) <$> dataSourceMatchup ds
     )
  where
   matchComp = toComp teamState
-  run :: (ToIO m, Ord res, Show res) => MatchComp -> Stats m res -> IO [Result]
-  run who what = (lift $ runStats what who) >>= (pure . recomend)
+  run
+    :: (ToIO m, Ord res, Show res) => TP.Picks -> Stats m res -> IO [HeroValue]
+  run who what =
+    (lift $ runStats what who) >>= pure . (uncurry HeroValue <$>) . recomend
 
 data Continuation a = Next a | Halt a
 
@@ -454,7 +459,7 @@ appEvent st (T.VtyEvent ev) = case st ^. heroSelect . P.shown of
           $ st
           & (case
                 ( F.focusGetCurrent (st ^. teams . teamFocus)
-                , selectedHero (resultHero <$> st ^. recomendations)
+                , selectedHero (heroValueH <$> st ^. recomendations)
                 )
               of -- TODO: Duplicated of the handleListEvent when the popup is closed 
                 (Just MyTeamN, Just h) -> teams . myTeam %~ listAddAndFocus h
@@ -511,10 +516,10 @@ strategyHelp :: Strategy -> T.Widget n
 strategyHelp st = case st of
   MaxWinPercentage     -> txt "Max win percentage"
   AverageWinPercentage -> txt "Average win percentage"
-  TeamLegged           -> txt "your team legs"
+  TeamLegged           -> txt "Your team legs"
   TeamCombos           -> txt "Combos of your team"
   AllCombos            -> txt "Combos al full composition"
-  NumberOfMatches      -> txt "number of matches"
+  NumberOfMatchesS     -> txt "Number of matches"
 
 innitialStrategies :: Vec.Vector Strategy
 innitialStrategies = Vec.fromList [(minBound :: Strategy) ..]

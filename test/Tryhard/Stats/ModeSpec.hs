@@ -8,7 +8,10 @@ import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
 import           Test.Fixture
 
-import           Tryhard.Stats.Mode
+import           Tryhard.Stats.Matchup.WinPercentage
+import           Tryhard.Stats.Matchup.NumberOfMatches
+import           Tryhard.Stats.NumberOfLegs
+import           Tryhard.Stats.Combine
 
 spec :: Spec
 spec = do
@@ -51,10 +54,16 @@ spec = do
     describe "#NumberOfLegs" $ do
       it "the difference of legs between two heroes is equal to itself" $ do
         numberOfLegs axe bane == numberOfLegs axe bane `shouldBe` True
-      it "the difference of legs between two heroes is equal to the difference of the two heroes inverted" $ do
-        numberOfLegs axe bane == numberOfLegs bane axe `shouldBe` True
-      it "the difference between axe and bane is less than the difference between axe and antimate" $ do
-        (numberOfLegs axe bane) < (numberOfLegs axe antiMage) `shouldBe` True
+      it
+          "the difference of legs between two heroes is equal to the difference of the two heroes inverted"
+        $ do
+            numberOfLegs axe bane == numberOfLegs bane axe `shouldBe` True
+      it
+          "the difference between axe and bane is less than the difference between axe and antimate"
+        $ do
+            (numberOfLegs axe bane)
+              <          (numberOfLegs axe antiMage)
+              `shouldBe` True
       it "can be displayed" $ do
         show (numberOfLegs axe bane) `shouldBe` "Δ 2 legs"
 
@@ -99,7 +108,7 @@ spec = do
                     <>         m2
                     `shouldBe` (Sum $ NumberOfMatches (played1 + played2))
       describe ".WinPercentage" $ do
-        it "can colapse with no matches, and simply ignores it" $ do
+        it "can collapse with no matches, and simply ignores it" $ do
           getMax
               (  Max (WinPercentage notPlayed)
               <> Max (WinPercentage (percent 100))
